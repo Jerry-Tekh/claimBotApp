@@ -25,6 +25,9 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pytest-mock
 
+      - name: Check GenLayer contract schema shape
+        run: python scripts/check_genlayer_schema.py contracts/claimbot_main.py
+
       - name: Run contract unit tests
         run: python -m pytest tests/ -v --tb=short
 
