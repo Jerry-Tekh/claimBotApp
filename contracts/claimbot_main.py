@@ -150,6 +150,26 @@ def _clean_json(raw: str) -> dict:
     return json.loads(text)
 
 
+def _parse_json_list(raw: str, field_name: str) -> list:
+    try:
+        data = json.loads(raw)
+    except Exception:
+        raise gl.vm.UserError(f"{field_name} must be a JSON array")
+    if not isinstance(data, list):
+        raise gl.vm.UserError(f"{field_name} must be a JSON array")
+    return [str(item) for item in data]
+
+
+def _parse_json_object(raw: str, field_name: str) -> dict:
+    try:
+        data = json.loads(raw)
+    except Exception:
+        raise gl.vm.UserError(f"{field_name} must be a JSON object")
+    if not isinstance(data, dict):
+        raise gl.vm.UserError(f"{field_name} must be a JSON object")
+    return data
+
+
 # ──────────────────────────────────────────────────────────
 # Main ClaimBot Contract
 # ──────────────────────────────────────────────────────────
@@ -248,8 +268,8 @@ class ClaimBot(gl.Contract):
         policy_id:        str,
         template_id:      str,
         coverage_area:    str,
-        coverage_amount:  int,
-        expiry_block:     int,
+        coverage_amount:  u256,
+        expiry_block:     u256,
         trigger_override: str,   # human-readable trigger condition
     ) -> None:
         """
@@ -330,7 +350,7 @@ class ClaimBot(gl.Contract):
         claim_id:          str,
         policy_id:         str,
         event_description: str,
-        source_urls:       list[str],
+        source_urls_json:  str,
     ) -> None:
         """
         File a parametric insurance claim.
@@ -344,6 +364,7 @@ class ClaimBot(gl.Contract):
         self._assert_not_paused()
         caller = str(gl.message.sender_address)
         block  = gl.message.block_number
+        source_urls = _parse_json_list(source_urls_json, "source_urls")
 
         # Load and validate policy
         policy = self._get_policy(policy_id)
@@ -524,7 +545,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
     def appeal_claim(
         self,
         claim_id:           str,
-        additional_sources: list[str],
+        additional_sources_json: str,
         appeal_statement:   str,
     ) -> None:
         """
@@ -535,6 +556,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         """
         caller = str(gl.message.sender_address)
         block  = gl.message.block_number
+        additional_sources = _parse_json_list(additional_sources_json, "additional_sources")
 
         claim = self._get_claim(claim_id)
         if claim["claimant"] != caller:
@@ -701,15 +723,15 @@ Return ONLY valid JSON. No markdown fences. No other text."""
     # ──────────────────────────────────────────────────────
 
     @gl.public.view
-    def get_policy(self, policy_id: str) -> dict:
-        return self._get_policy(policy_id)
+    def get_policy(self, policy_id: str) -> str:
+        return json.dumps(self._get_policy(policy_id))
 
     @gl.public.view
-    def get_claim(self, claim_id: str) -> dict:
-        return self._get_claim(claim_id)
+    def get_claim(self, claim_id: str) -> str:
+        return json.dumps(self._get_claim(claim_id))
 
     @gl.public.view
-    def get_wallet_policies(self, wallet: str) -> list:
+    def get_wallet_policies(self, wallet: str) -> str:
         pids = self._get_wallet_policies(wallet)
         result = []
         for pid in pids:
@@ -717,10 +739,10 @@ Return ONLY valid JSON. No markdown fences. No other text."""
                 result.append(self._get_policy(pid))
             except Exception:
                 pass
-        return result
+        return json.dumps(result)
 
     @gl.public.view
-    def get_treasury(self) -> dict:
+    def get_treasury(self) -> str:
         t = self._get_treasury()
         pool     = t["pool"]
         exposure = t["exposure"]
@@ -729,7 +751,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         required = (exposure * RESERVE_RATIO_BPS) // 10_000
         ratio    = (pool * 10_000 // exposure) if exposure > 0 else 10_000
 
-        return {
+        return json.dumps({
             "pool_balance":          pool,
             "emergency_reserve":     emergency,
             "liquid_available":      liquid,
@@ -743,43 +765,43 @@ Return ONLY valid JSON. No markdown fences. No other text."""
             "payout_count":          t["payout_count"],
             "loss_ratio":            (t["paid_out"] * 10_000 // max(t["premiums_in"], 1)),
             "reinsurance_alert":     (exposure * 10_000 // max(pool, 1)) >= 7500,
-        }
+        })
 
     @gl.public.view
-    def list_templates(self) -> list:
-        return [
+    def list_templates(self) -> str:
+        return json.dumps([
             {"id": tid, **tdata}
             for tid, tdata in POLICY_TEMPLATES.items()
-        ]
+        ])
 
     @gl.public.view
-    def is_claimable(self, policy_id: str) -> dict:
+    def is_claimable(self, policy_id: str) -> str:
         policy = self._get_policy(policy_id)
         block  = gl.message.block_number
         if not policy["active"]:
-            return {"claimable": False, "reason": "Policy not active"}
+            return json.dumps({"claimable": False, "reason": "Policy not active"})
         if policy["paid_out"]:
-            return {"claimable": False, "reason": "Already paid out"}
+            return json.dumps({"claimable": False, "reason": "Already paid out"})
         if policy.get("cancelled"):
-            return {"claimable": False, "reason": "Policy cancelled"}
+            return json.dumps({"claimable": False, "reason": "Policy cancelled"})
         if block > policy["expiry_block"]:
-            return {"claimable": False, "reason": "Policy expired"}
+            return json.dumps({"claimable": False, "reason": "Policy expired"})
         if block <= policy["cooling_off_until"]:
-            return {"claimable": False, "reason": f"Cooling-off until block {policy['cooling_off_until']}"}
-        return {"claimable": True, "reason": "Eligible"}
+            return json.dumps({"claimable": False, "reason": f"Cooling-off until block {policy['cooling_off_until']}"})
+        return json.dumps({"claimable": True, "reason": "Eligible"})
 
     @gl.public.view
-    def get_wallet_claims(self, wallet: str) -> list:
+    def get_wallet_claims(self, wallet: str) -> str:
         """All claims filed by a given wallet, across all of its policies."""
         result = []
         for cid in self.claims:
             c = json.loads(self.claims[cid])
             if c.get("claimant") == wallet:
                 result.append(c)
-        return result
+        return json.dumps(result)
 
     @gl.public.view
-    def get_global_stats(self) -> dict:
+    def get_global_stats(self) -> str:
         """Protocol-wide stats for the analytics dashboard."""
         t = self._get_treasury()
         total_policies  = len(self.policies)
@@ -793,7 +815,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         pool     = t["pool"]
         ratio    = (pool * 10_000 // exposure) if exposure > 0 else 10_000
 
-        return {
+        return json.dumps({
             "total_policies":  total_policies,
             "active_policies": active_policies,
             "total_premium":   t["premiums_in"],
@@ -802,7 +824,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
             "pool_balance":    pool,
             "is_solvent":      ratio >= RESERVE_RATIO_BPS,
             "loss_ratio":      (t["paid_out"] * 10_000 // max(t["premiums_in"], 1)),
-        }
+        })
 
     # ──────────────────────────────────────────────────────
     # Governance — config + proposal storage helpers
@@ -839,7 +861,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
     def submit_governance_proposal(
         self,
         proposal_type: str,    # "pause" | "unpause" | "update_dao_fee" | "add_template"
-        payload:       dict,
+        payload_json:  str,
         description:   str,
     ) -> str:
         """
@@ -853,6 +875,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
 
         block = gl.message.block_number
         cfg   = self._get_config()
+        payload = _parse_json_object(payload_json, "payload")
 
         self._set_proposal(proposal_id, {
             "id":               proposal_id,
@@ -930,15 +953,14 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         self._set_proposal(proposal_id, proposal)
 
     @gl.public.view
-    def get_proposal(self, proposal_id: str) -> dict:
-        return self._get_proposal(proposal_id)
+    def get_proposal(self, proposal_id: str) -> str:
+        return json.dumps(self._get_proposal(proposal_id))
 
     @gl.public.view
-    def list_proposals(self) -> list:
-        return [json.loads(self.proposals[pid]) for pid in self.proposals]
+    def list_proposals(self) -> str:
+        return json.dumps([json.loads(self.proposals[pid]) for pid in self.proposals])
 
     @gl.public.view
-    def get_governance_config(self) -> dict:
+    def get_governance_config(self) -> str:
         cfg = self._get_config()
-        return {**cfg, "admin": self.admin}
-
+        return json.dumps({**cfg, "admin": self.admin})
