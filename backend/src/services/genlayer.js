@@ -14,6 +14,13 @@ const ENDPOINT      = process.env.GENLAYER_ENDPOINT || "https://testnet.genlayer
 const CONTRACT_ADDR = process.env.CONTRACT_ADDRESS  || "0x0000000000000000000000000000000000000000";
 const DEMO_MODE     = process.env.DEMO_MODE !== "false"; // default ON
 
+const TEMPLATE_PREMIUM_BPS = {
+  "flood-ng": 200,
+  "crop-failure": 300,
+  "flight-delay": 150,
+  "port-strike": 250,
+};
+
 // ── Mock templates ────────────────────────────────────────
 
 const MOCK_TEMPLATES = [
@@ -182,6 +189,43 @@ async function rpcCall(method, params) {
   return res.data.result;
 }
 
+function parseContractJson(value, fallback) {
+  if (value == null) return fallback;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return value;
+
+  const trimmed = value.trim();
+  if (!trimmed) return fallback;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return fallback;
+  }
+}
+
+function toHexWei(value) {
+  const amount = BigInt(Math.max(0, Math.trunc(Number(value) || 0)));
+  return "0x" + amount.toString(16);
+}
+
+function buildTriggerOverride(templateId, coverageArea, triggerOverrides = {}) {
+  if (typeof triggerOverrides === "string") return triggerOverrides;
+
+  const area = triggerOverrides.area || coverageArea;
+  switch (templateId) {
+    case "flood-ng":
+      return `Flooding that displaces more than ${triggerOverrides.threshold || "5000"} residents in ${area}`;
+    case "crop-failure":
+      return `NDVI index below ${triggerOverrides.ndvi_threshold || "0.3"} in ${area} for ${triggerOverrides.consecutive_weeks || "3"} consecutive weeks`;
+    case "flight-delay":
+      return `Flight ${triggerOverrides.flight_number || "specified flight"} delayed more than ${triggerOverrides.delay_hours || "3"} hours on ${triggerOverrides.date || "the covered date"}`;
+    case "port-strike":
+      return `Official port strike at ${triggerOverrides.port_name || area} lasting more than ${triggerOverrides.duration_hours || "24"} hours`;
+    default:
+      return triggerOverrides.trigger || `Covered event in ${area}`;
+  }
+}
+
 async function readContract(functionName, args = []) {
   return rpcCall("gen_call", {
     to:   CONTRACT_ADDR,
@@ -189,11 +233,12 @@ async function readContract(functionName, args = []) {
   });
 }
 
-async function writeContract(functionName, args = []) {
+async function writeContract(functionName, args = [], { from, value = 0 } = {}) {
   return rpcCall("gen_sendTransaction", {
     to:   CONTRACT_ADDR,
     data: { function: functionName, args },
-    from: process.env.ADMIN_WALLET || "0x0",
+    from: from || process.env.ADMIN_WALLET || "0x0",
+    value: toHexWei(value),
   });
 }
 
@@ -201,27 +246,27 @@ async function writeContract(functionName, args = []) {
 
 async function getTemplates() {
   if (DEMO_MODE) return MOCK_TEMPLATES;
-  return readContract("list_templates");
+  return parseContractJson(await readContract("list_templates"), []);
 }
 
 async function getWalletPolicies(wallet) {
   if (DEMO_MODE) return mockPoliciesForWallet(wallet);
-  return readContract("get_wallet_policies", [wallet]);
+  return parseContractJson(await readContract("get_wallet_policies", [wallet]), []);
 }
 
 async function getPolicy(policyId) {
   if (DEMO_MODE) return null;
-  return readContract("get_policy", [policyId]);
+  return parseContractJson(await readContract("get_policy", [policyId]), null);
 }
 
 async function getTreasury() {
   if (DEMO_MODE) return MOCK_TREASURY;
-  return readContract("get_treasury");
+  return parseContractJson(await readContract("get_treasury"), null);
 }
 
 async function getGlobalStats() {
   if (DEMO_MODE) return MOCK_STATS;
-  return readContract("get_global_stats");
+  return parseContractJson(await readContract("get_global_stats"), null);
 }
 
 async function getWalletClaims(wallet) {
@@ -229,12 +274,12 @@ async function getWalletClaims(wallet) {
     const policies = mockPoliciesForWallet(wallet);
     return mockClaimsForWallet(wallet, policies);
   }
-  return readContract("get_wallet_claims", [wallet]);
+  return parseContractJson(await readContract("get_wallet_claims", [wallet]), []);
 }
 
 async function getClaim(claimId) {
   if (DEMO_MODE) return null;
-  return readContract("get_claim", [claimId]);
+  return parseContractJson(await readContract("get_claim", [claimId]), null);
 }
 
 async function purchasePolicy({ wallet, templateId, coverageArea, coverageAmount, expiryBlock, triggerOverrides }) {
@@ -244,9 +289,16 @@ async function purchasePolicy({ wallet, templateId, coverageArea, coverageAmount
   if (DEMO_MODE) {
     return { tx_hash: "0x" + crypto.randomBytes(32).toString("hex"), policy_id: policyId };
   }
+  const triggerOverride = buildTriggerOverride(templateId, coverageArea, triggerOverrides);
+  const premium = Math.round((coverageAmount * (TEMPLATE_PREMIUM_BPS[templateId] || 200)) / 10_000);
   const txHash = await writeContract("purchase_policy", [
-    templateId, coverageArea, coverageAmount, expiryBlock ?? 999_999, triggerOverrides ?? {},
-  ]);
+    policyId,
+    templateId,
+    coverageArea,
+    coverageAmount,
+    expiryBlock ?? 999_999,
+    triggerOverride,
+  ], { from: wallet, value: premium });
   return { tx_hash: txHash, policy_id: policyId };
 }
 
@@ -254,7 +306,7 @@ async function cancelPolicy({ wallet, policyId }) {
   if (DEMO_MODE) {
     return { tx_hash: "0x" + crypto.randomBytes(32).toString("hex") };
   }
-  const txHash = await writeContract("cancel_policy", [policyId]);
+  const txHash = await writeContract("cancel_policy", [policyId], { from: wallet });
   return { tx_hash: txHash };
 }
 
@@ -270,8 +322,11 @@ async function submitClaim({ wallet, policyId, eventDescription, sourceUrls, sou
     };
   }
   const txHash = await writeContract("file_claim", [
-    policyId, eventDescription, sourceUrls, sourceTypeHints,
-  ]);
+    claimId,
+    policyId,
+    eventDescription,
+    JSON.stringify(sourceUrls),
+  ], { from: wallet });
   return { tx_hash: txHash, claim_id: claimId, status: "pending" };
 }
 
@@ -279,7 +334,7 @@ async function submitAppeal({ wallet, claimId, additionalSources, appealStatemen
   if (DEMO_MODE) {
     return { claim_id: claimId, appeal_round: 1, approved: false, score: 0, reasoning: "Appeal submitted to validators" };
   }
-  await writeContract("appeal_claim", [claimId, additionalSources, appealStatement]);
+  await writeContract("appeal_claim", [claimId, JSON.stringify(additionalSources), appealStatement], { from: wallet });
   return { claim_id: claimId, appeal_round: 1, approved: false, score: 0, reasoning: "Processing" };
 }
 
