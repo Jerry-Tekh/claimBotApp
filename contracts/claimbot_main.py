@@ -47,6 +47,8 @@ COOLING_OFF_BLOCKS      = 50
 MAX_POLICIES_PER_WALLET = 5
 CLAIM_COOLDOWN_BLOCKS   = 100
 MAX_CLAIMS_PER_POLICY   = 3
+MIN_SOURCE_URLS         = 2
+MAX_SOURCE_URLS         = 6
 
 RESERVE_RATIO_BPS      = 2000   # 20% of exposure held as reserve
 EMERGENCY_RESERVE_BPS  = 2500   # 25% of premiums → locked
@@ -160,14 +162,25 @@ def _clean_json(raw: str) -> dict:
     return json.loads(text)
 
 
-def _parse_json_list(raw: str, field_name: str) -> list:
+def _parse_json_list(raw: str, field_name: str, min_items=0, max_items=MAX_SOURCE_URLS) -> list:
     try:
         data = json.loads(raw)
     except Exception:
         raise gl.vm.UserError(f"{field_name} must be a JSON array")
     if not isinstance(data, list):
         raise gl.vm.UserError(f"{field_name} must be a JSON array")
-    return [str(item) for item in data]
+    if len(data) < min_items:
+        raise gl.vm.UserError(f"{field_name} must contain at least {min_items} item(s)")
+    if len(data) > max_items:
+        raise gl.vm.UserError(f"{field_name} can contain at most {max_items} item(s)")
+
+    result = []
+    for item in data:
+        url = str(item).strip()
+        if not (url.startswith("https://") or url.startswith("http://")):
+            raise gl.vm.UserError(f"{field_name} contains an invalid URL")
+        result.append(url)
+    return result
 
 
 def _parse_json_object(raw: str, field_name: str) -> dict:
@@ -374,7 +387,9 @@ class ClaimBot(gl.Contract):
         self._assert_not_paused()
         caller = str(gl.message.sender_address)
         block  = gl.message.block_number
-        source_urls = _parse_json_list(source_urls_json, "source_urls")
+        source_urls = _parse_json_list(
+            source_urls_json, "source_urls", min_items=MIN_SOURCE_URLS
+        )
 
         # Load and validate policy
         policy = self._get_policy(policy_id)
@@ -567,7 +582,9 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         """
         caller = str(gl.message.sender_address)
         block  = gl.message.block_number
-        additional_sources = _parse_json_list(additional_sources_json, "additional_sources")
+        additional_sources = _parse_json_list(
+            additional_sources_json, "additional_sources", min_items=1
+        )
 
         claim = self._get_claim(claim_id)
         if claim["claimant"] != caller:
