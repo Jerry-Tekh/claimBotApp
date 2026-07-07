@@ -303,6 +303,9 @@ class ClaimBot(gl.Contract):
         block  = gl.message.block_number
         value  = gl.message.value
 
+        if policy_id in self.policies:
+            raise gl.vm.UserError(f"Policy already exists: {policy_id}")
+
         # Validate template
         if template_id not in POLICY_TEMPLATES:
             raise gl.vm.UserError(f"Unknown template: {template_id}")
@@ -311,6 +314,8 @@ class ClaimBot(gl.Contract):
         # Coverage bounds
         if coverage_amount <= 0 or coverage_amount > tmpl["max_coverage"]:
             raise gl.vm.UserError(f"Coverage out of bounds for template {template_id}")
+        if expiry_block <= block + COOLING_OFF_BLOCKS:
+            raise gl.vm.UserError("Expiry must be after the cooling-off period")
 
         # Sybil guard
         wallet_pols = self._get_wallet_policies(str(caller))
@@ -325,6 +330,8 @@ class ClaimBot(gl.Contract):
         premium = (coverage_amount * tmpl["base_premium_bps"]) // 10_000
         if value < premium:
             raise gl.vm.UserError(f"Insufficient premium. Required: {premium}, sent: {value}")
+        if value > premium:
+            raise gl.vm.UserError(f"Premium overpayment not accepted. Required: {premium}, sent: {value}")
 
         # Store policy
         policy = {
