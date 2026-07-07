@@ -6,9 +6,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
-import { createAccount, createClient } from "genlayer-js";
+import { createAccount, createClient, abi } from "genlayer-js";
 import { testnetBradbury } from "genlayer-js/chains";
 import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
+import { encodeFunctionData, parseEventLogs } from "viem";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -99,14 +100,96 @@ async function read(address, functionName, args = []) {
 }
 
 async function write(address, functionName, args = [], value = 0n, label = functionName) {
-  const hash = await client.writeContract({
-    address,
-    functionName,
-    args,
-    value,
-    leaderOnly: false,
-  });
+  const hash = await sendWriteWithGasBuffer(address, functionName, args, value);
   return waitAccepted(hash, label);
+}
+
+async function waitEvmReceipt(hash, retries = 120) {
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    const receipt = await client.request({
+      method: "eth_getTransactionReceipt",
+      params: [hash],
+    });
+    if (receipt) return receipt;
+    await sleep(2_000);
+  }
+  throw new Error(`Timed out waiting for EVM transaction receipt: ${hash}`);
+}
+
+function addTransactionInputCount() {
+  const item = testnetBradbury.consensusMainContract.abi.find(
+    (entry) => entry?.type === "function" && entry.name === "addTransaction"
+  );
+  return Array.isArray(item?.inputs) ? item.inputs.length : 0;
+}
+
+function extractTxIdFromLogs(logs) {
+  const events = parseEventLogs({
+    abi: testnetBradbury.consensusMainContract.abi,
+    eventName: "NewTransaction",
+    logs,
+  });
+  return events[0]?.args?.txId;
+}
+
+async function sendWriteWithGasBuffer(address, functionName, args = [], value = 0n) {
+  const callData = abi.calldata.encode(
+    abi.calldata.makeCalldataObject(functionName, args, undefined)
+  );
+  const txData = abi.transactions.serialize([callData, false]);
+  const addArgs = [
+    account.address,
+    address,
+    testnetBradbury.defaultNumberOfInitialValidators,
+    testnetBradbury.defaultConsensusMaxRotations,
+    txData,
+  ];
+  if (addTransactionInputCount() >= 6) {
+    addArgs.push(BigInt(Math.floor(Date.now() / 1000) + 3600));
+  }
+
+  const encodedData = encodeFunctionData({
+    abi: testnetBradbury.consensusMainContract.abi,
+    functionName: "addTransaction",
+    args: addArgs,
+  });
+
+  const nonce = await client.getCurrentNonce({ address: account.address });
+  const gasPriceHex = await client.request({ method: "eth_gasPrice" });
+  const estimatedGasHex = await client.request({
+    method: "eth_estimateGas",
+    params: [{
+      from: account.address,
+      to: testnetBradbury.consensusMainContract.address,
+      data: encodedData,
+      value: `0x${value.toString(16)}`,
+    }],
+  });
+  const estimatedGas = BigInt(estimatedGasHex);
+  const gas = (estimatedGas * 160n) / 100n + 50_000n;
+
+  const serializedTransaction = await account.signTransaction({
+    account,
+    to: testnetBradbury.consensusMainContract.address,
+    data: encodedData,
+    type: "legacy",
+    nonce: Number(nonce),
+    value,
+    gas,
+    gasPrice: BigInt(gasPriceHex),
+    chainId: testnetBradbury.id,
+  });
+  const evmHash = await client.sendRawTransaction({ serializedTransaction });
+  const receipt = await waitEvmReceipt(evmHash);
+  if (receipt.status === "0x0" || receipt.status === "reverted") {
+    throw new Error(`EVM transaction reverted before GenLayer consensus tx creation: ${evmHash}`);
+  }
+  const txId = extractTxIdFromLogs(receipt.logs);
+  if (!txId) {
+    throw new Error(`EVM transaction succeeded but no GenLayer tx id was emitted: ${evmHash}`);
+  }
+  console.log(`${functionName} evm tx: ${evmHash}`);
+  return txId;
 }
 
 async function deploy() {
