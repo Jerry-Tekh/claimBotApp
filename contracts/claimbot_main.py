@@ -207,7 +207,7 @@ class ClaimBot(gl.Contract):
 
     def __init__(self) -> None:
         # TreeMap fields are automatically initialised — no explicit init needed
-        self.admin      = gl.message.sender_address
+        self.admin      = str(gl.message.sender_address)
         self.treasury   = json.dumps({
             "pool":       0,
             "emergency":  0,
@@ -861,7 +861,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
             raise gl.vm.UserError("ClaimBot is currently paused by DAO governance")
 
     def _assert_admin(self) -> None:
-        if gl.message.sender_address != self.admin:
+        if str(gl.message.sender_address) != self.admin:
             raise gl.vm.UserError("Admin only")
 
     # ──────────────────────────────────────────────────────
@@ -880,7 +880,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         requires votes_for > votes_against and the timelock to elapse
         before an admin can execute it.
         """
-        caller = gl.message.sender_address
+        caller = str(gl.message.sender_address)
         raw = f"{caller}:{proposal_type}:{gl.message.block_number}"
         proposal_id = "PROP-" + hashlib.sha256(raw.encode()).hexdigest()[:12].upper()
 
@@ -906,7 +906,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
     @gl.public.write
     def vote_proposal(self, proposal_id: str, support: bool) -> None:
         """Cast a single vote (1 wallet = 1 vote) on an open proposal."""
-        caller   = gl.message.sender_address
+        caller   = str(gl.message.sender_address)
         proposal = self._get_proposal(proposal_id)
 
         if proposal["executed"]:
