@@ -100,6 +100,21 @@ class _EqPrinciple:
         return fn()
 
 
+class _EVM:
+    @staticmethod
+    def contract_interface(cls):
+        def __init__(self, address):
+            self.address = Address(address)
+
+        def emit_transfer(self, value=0, **_kwargs):
+            self.last_transfer_value = u256(value)
+            return None
+
+        cls.__init__ = __init__
+        cls.emit_transfer = emit_transfer
+        return cls
+
+
 class _GL:
     class Contract:
         pass
@@ -109,6 +124,7 @@ class _GL:
     message = _Message()
     nondet = _Nondet()
     eq_principle = _EqPrinciple()
+    evm = _EVM()
 
 
 gl = _GL()

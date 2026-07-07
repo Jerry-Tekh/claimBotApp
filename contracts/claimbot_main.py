@@ -13,13 +13,23 @@
 #   - gl.eq_principle.prompt_comparative(fn, criteria) for LLM consensus
 #   - gl.eq_principle.strict_eq() for deterministic ops
 #   - gl.message.sender_address  for caller
-#   - Address.transfer(amount)   for payouts
+#   - _Recipient(Address(...)).emit_transfer(value=u256(...)) for payouts
 # ============================================================
 
 from genlayer import *
 import json
 import re
 import hashlib
+
+
+@gl.evm.contract_interface
+class _Recipient:
+    class View:
+        pass
+
+    class Write:
+        pass
+
 
 # ──────────────────────────────────────────────────────────
 # Policy type → required source types + weights
@@ -524,10 +534,11 @@ Return ONLY valid JSON. No markdown fences. No other text."""
 
         self._set_policy(policy_id, policy)
 
-        # Process payout — transfer to holder using Address.transfer()
+        # Process payout — emit an external value transfer to the holder.
         if payout_triggered:
-            holder_addr = Address(policy["holder"])
-            holder_addr.transfer(policy["coverage_amount"])
+            _Recipient(Address(policy["holder"])).emit_transfer(
+                value=u256(policy["coverage_amount"])
+            )
 
             # Update treasury
             t = self._get_treasury()
@@ -665,8 +676,9 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         self._set_claim(claim_id, claim)
 
         if approved:
-            holder_addr = Address(policy["holder"])
-            holder_addr.transfer(policy["coverage_amount"])
+            _Recipient(Address(policy["holder"])).emit_transfer(
+                value=u256(policy["coverage_amount"])
+            )
             policy["paid_out"] = True
             policy["active"]   = False
             self._set_policy(claim["policy_id"], policy)
@@ -715,8 +727,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         t["exposure"]  -= policy["coverage_amount"]
         self._set_treasury(t)
 
-        caller_addr = Address(caller)
-        caller_addr.transfer(refund)
+        _Recipient(Address(caller)).emit_transfer(value=u256(refund))
 
     # ──────────────────────────────────────────────────────
     # Public views
