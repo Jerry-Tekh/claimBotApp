@@ -13,10 +13,10 @@ function extractDomain(url) {
 
 function detectSourceType(url) {
   const l = url.toLowerCase();
-  if (/nihsa|nimet|ncdc|weather\.gov|noaa|open-meteo|wunderground/.test(l)) return "weather";
-  if (/faan|flightaware|flightradar|marinetraffic|portoflagos|nimasa/.test(l))  return "logistics";
-  if (/copernicus|nasa|firms|earthdata|sentinel/.test(l))                       return "satellite";
-  if (/gov\.ng|\.gov|nigerian|federal|ministry/.test(l))                        return "government";
+  if (/gov\.ng|\.gov|nihsa|nimet|ncdc|nigerian|federal|ministry/.test(l)) return "government";
+  if (/faan|flightaware|flightradar|marinetraffic|portoflagos|nimasa/.test(l)) return "logistics";
+  if (/copernicus|nasa|firms|earthdata|sentinel/.test(l)) return "satellite";
+  if (/weather\.com|open-meteo|wunderground|noaa/.test(l)) return "weather";
   return "news";
 }
 
