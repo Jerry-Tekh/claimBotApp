@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
+import re
 import sys
 from pathlib import Path
 
 
+RUNNER_VERSION_RE = re.compile(r"^#\s+v\d+\.\d+\.\d+")
 FORBIDDEN_SCHEMA_TYPES = {"dict", "list", "int"}
 FORBIDDEN_STORAGE_TYPES = {"dict", "list", "int"}
 ALLOWED_UNTYPED_RETURNS = {"None"}
@@ -69,11 +72,28 @@ def check_contract(path: Path) -> list[str]:
     source = path.read_text()
     errors: list[str] = []
 
-    first_line = source.splitlines()[0] if source.splitlines() else ""
-    if '"Depends": "py-genlayer:' not in first_line:
-        errors.append("line 1: missing pinned py-genlayer dependency header")
-    if "py-genlayer:test" in first_line or "py-genlayer:latest" in first_line:
-        errors.append("line 1: py-genlayer runner must be pinned, not test/latest")
+    lines = source.splitlines()
+    first_line = lines[0] if lines else ""
+    second_line = lines[1] if len(lines) > 1 else ""
+    third_line = lines[2] if len(lines) > 2 else ""
+
+    if not RUNNER_VERSION_RE.match(first_line):
+        errors.append("line 1: GenVM runner header must start with a version, e.g. '# v0.2.16'")
+    if '"Depends": "py-genlayer:' not in second_line:
+        errors.append("line 2: missing pinned py-genlayer dependency config")
+    else:
+        config_raw = second_line.removeprefix("#").strip()
+        try:
+            config = json.loads(config_raw)
+            depends = str(config.get("Depends", ""))
+            if depends in {"py-genlayer:test", "py-genlayer:latest"}:
+                errors.append("line 2: py-genlayer runner must be pinned, not test/latest")
+            if not depends.startswith("py-genlayer:"):
+                errors.append("line 2: Depends must target py-genlayer")
+        except json.JSONDecodeError:
+            errors.append("line 2: py-genlayer dependency config must be valid JSON")
+    if third_line.startswith("#"):
+        errors.append("line 3: add a blank line after runner config before normal comments")
 
     try:
         tree = ast.parse(source, filename=str(path))
