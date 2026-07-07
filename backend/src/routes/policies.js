@@ -4,6 +4,13 @@ const router  = express.Router();
 const gl      = require("../services/genlayer");
 const { query } = require("../db/pool");
 
+const TEMPLATE_META = {
+  "flood-ng": { policyType: "flood", premiumBps: 200 },
+  "crop-failure": { policyType: "crop", premiumBps: 300 },
+  "flight-delay": { policyType: "flight", premiumBps: 150 },
+  "port-strike": { policyType: "cargo", premiumBps: 250 },
+};
+
 // GET /api/policies/:wallet
 router.get("/:wallet", async (req, res, next) => {
   try {
@@ -61,6 +68,7 @@ router.post("/purchase", async (req, res, next) => {
 
     // Persist to DB
     try {
+      const meta = TEMPLATE_META[templateId] || { policyType: templateId.split("-")[0], premiumBps: 200 };
       await query(
         `INSERT INTO policies (policy_id, wallet_address, template_id, policy_type, coverage_area,
           trigger_condition, coverage_amount, premium_paid, expiry_block, purchase_block, status, tx_hash)
@@ -68,11 +76,11 @@ router.post("/purchase", async (req, res, next) => {
          ON CONFLICT (policy_id) DO NOTHING`,
         [
           result.policy_id, wallet.toLowerCase(), templateId,
-          templateId.split("-")[0],  // infer type from template ID
+          meta.policyType,
           coverageArea,
           triggerOverrides?.area ?? coverageArea,
           coverageAmount,
-          Math.round((coverageAmount * 200) / 10000),  // 2% default
+          Math.round((coverageAmount * meta.premiumBps) / 10000),
           expiryBlock ?? 999999, 0, "active", result.tx_hash,
         ]
       );
