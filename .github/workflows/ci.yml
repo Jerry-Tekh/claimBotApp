@@ -1,0 +1,142 @@
+# ============================================================
+# ClaimBot — GitHub Actions CI/CD Pipeline
+# ============================================================
+
+name: ClaimBot CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Contract Tests ──────────────────────────────────────
+  test-contracts:
+    name: Contract tests (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-mock
+
+      - name: Run contract unit tests
+        run: python -m pytest tests/ -v --tb=short
+
+  # ── Frontend ────────────────────────────────────────────
+  test-frontend:
+    name: Frontend (TypeScript + Build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Next.js production build
+        working-directory: frontend
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+          NEXT_PUBLIC_GENLAYER_ENDPOINT: https://testnet.genlayer.com
+          NEXT_PUBLIC_CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000000"
+
+  # ── Backend ─────────────────────────────────────────────
+  test-backend:
+    name: Backend (Node.js syntax + module load)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Syntax check all JS files
+        working-directory: backend
+        run: |
+          for f in src/**/*.js src/*.js; do
+            node --check "$f" && echo "OK: $f"
+          done
+
+      - name: Module load check
+        working-directory: backend
+        run: |
+          DEMO_MODE=true DATABASE_URL=postgresql://x:x@localhost:9999/x node -e "
+          ['./src/services/genlayer','./src/db/pool','./src/routes/templates',
+           './src/routes/policies','./src/routes/claims','./src/routes/treasury',
+           './src/routes/stats'].forEach(m => { require(m); console.log('OK:', m); });
+          "
+
+  # ── Deploy to Testnet ───────────────────────────────────
+  deploy-testnet:
+    name: Deploy to GenLayer Testnet
+    needs: [test-contracts, test-frontend, test-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GenLayer SDK
+        run: pip install genlayer-sdk 2>/dev/null || echo "SDK not yet public — using RPC deploy"
+
+      - name: Deploy contract to testnet
+        env:
+          GENLAYER_PRIVATE_KEY: ${{ secrets.TESTNET_PRIVATE_KEY }}
+          GENLAYER_ENDPOINT: https://testnet.genlayer.com
+        run: |
+          python deployment/deploy.py \
+            --network testnet \
+            --contract contracts/claimbot_main.py
+
+  # ── Deploy to Mainnet ───────────────────────────────────
+  deploy-mainnet:
+    name: Deploy to GenLayer Mainnet
+    needs: [test-contracts, test-frontend, test-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production     # requires manual approval in GitHub
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GenLayer SDK
+        run: pip install genlayer-sdk 2>/dev/null || echo "SDK not yet public — using RPC deploy"
+
+      - name: Deploy contract to mainnet
+        env:
+          GENLAYER_PRIVATE_KEY: ${{ secrets.MAINNET_PRIVATE_KEY }}
+          GENLAYER_ENDPOINT: https://mainnet.genlayer.com
+        run: |
+          python deployment/deploy.py \
+            --network mainnet \
+            --contract contracts/claimbot_main.py

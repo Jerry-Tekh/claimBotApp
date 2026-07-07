@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER:     claimbot
+      POSTGRES_PASSWORD: claimbot_dev
+      POSTGRES_DB:       claimbot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claimbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      PORT:              4000
+      NODE_ENV:          development
+      DATABASE_URL:      postgresql://claimbot:claimbot_dev@postgres:5432/claimbot
+      GENLAYER_ENDPOINT: https://testnet.genlayer.com
+      CONTRACT_ADDRESS:  "0x0000000000000000000000000000000000000000"
+      DEMO_MODE:         "true"
+      FRONTEND_URL:      http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+        NEXT_PUBLIC_GENLAYER_ENDPOINT: https://testnet.genlayer.com
+        NEXT_PUBLIC_CONTRACT_ADDRESS: "0x0000000000000000000000000000000000000000"
+        DOCKER_BUILD: "true"
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
