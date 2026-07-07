@@ -19,6 +19,7 @@ import json
 import time
 import hashlib
 import re
+from pathlib import Path
 
 
 NETWORK_ENDPOINTS = {
@@ -70,6 +71,20 @@ def main():
     except SyntaxError as e:
         print(f"❌  Syntax error: {e}")
         sys.exit(1)
+
+    try:
+        sys.path.insert(0, os.path.join(project_root, "scripts"))
+        from check_genlayer_schema import check_contract
+
+        schema_errors = check_contract(Path(contract_path))
+        if schema_errors:
+            print("\n❌  GenLayer schema guard failed:")
+            for error in schema_errors:
+                print(f"   - {error}")
+            sys.exit(1)
+        print("✅  GenLayer schema shape: OK")
+    except ImportError as e:
+        print(f"⚠  Could not load schema guard: {e}")
 
     # Verify Studio SDK patterns are used correctly
     issues = []
