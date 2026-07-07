@@ -10,9 +10,14 @@
     "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install",
     "build": "cd frontend && npm run build",
     "test:contracts": "python -m pytest tests/test_claimbot.py -v",
+    "contract:check-schema": "python3 scripts/check_genlayer_schema.py contracts/claimbot_main.py",
+    "contract:deploy-bradbury": "node scripts/deploy_bradbury.mjs",
     "db:setup": "cd backend && node src/db/migrate.js"
   },
   "devDependencies": {
-    "concurrently": "9.2.3"
+    "concurrently": "9.2.3",
+    "dotenv": "^16.6.1",
+    "genlayer": "^0.39.2",
+    "genlayer-js": "^1.1.8"
   }
 }
