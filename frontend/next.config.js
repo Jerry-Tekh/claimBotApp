@@ -16,8 +16,8 @@ const nextConfig = {
   // Suppress hydration warnings from browser extensions
   reactStrictMode: true,
 
-  // Fix workspace root detection warning in monorepo
-  outputFileTracingRoot: require("path").join(__dirname, "../../"),
+  // Trace files from the repository root when the frontend is deployed from a monorepo.
+  outputFileTracingRoot: require("path").join(__dirname, "../"),
 };
 
 module.exports = nextConfig;
