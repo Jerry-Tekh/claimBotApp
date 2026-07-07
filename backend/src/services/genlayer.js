@@ -226,6 +226,30 @@ function buildTriggerOverride(templateId, coverageArea, triggerOverrides = {}) {
   }
 }
 
+function normalizePolicy(policy) {
+  if (!policy) return policy;
+  return {
+    ...policy,
+    trigger_condition: policy.trigger_condition || policy.trigger || "",
+    claim_ids: policy.claim_ids || [],
+  };
+}
+
+function normalizeClaim(claim) {
+  if (!claim) return claim;
+  return {
+    ...claim,
+    llm_result: {
+      event_confirmed: false,
+      confidence: "low",
+      reasoning: "",
+      evidence_quality: Number(claim.evidence_score ?? 0) >= 70 ? "sufficient" : "insufficient",
+      red_flags: [],
+      ...(claim.llm_result || {}),
+    },
+  };
+}
+
 async function readContract(functionName, args = []) {
   return rpcCall("gen_call", {
     to:   CONTRACT_ADDR,
@@ -251,12 +275,12 @@ async function getTemplates() {
 
 async function getWalletPolicies(wallet) {
   if (DEMO_MODE) return mockPoliciesForWallet(wallet);
-  return parseContractJson(await readContract("get_wallet_policies", [wallet]), []);
+  return parseContractJson(await readContract("get_wallet_policies", [wallet]), []).map(normalizePolicy);
 }
 
 async function getPolicy(policyId) {
   if (DEMO_MODE) return null;
-  return parseContractJson(await readContract("get_policy", [policyId]), null);
+  return normalizePolicy(parseContractJson(await readContract("get_policy", [policyId]), null));
 }
 
 async function getTreasury() {
@@ -274,12 +298,12 @@ async function getWalletClaims(wallet) {
     const policies = mockPoliciesForWallet(wallet);
     return mockClaimsForWallet(wallet, policies);
   }
-  return parseContractJson(await readContract("get_wallet_claims", [wallet]), []);
+  return parseContractJson(await readContract("get_wallet_claims", [wallet]), []).map(normalizeClaim);
 }
 
 async function getClaim(claimId) {
   if (DEMO_MODE) return null;
-  return parseContractJson(await readContract("get_claim", [claimId]), null);
+  return normalizeClaim(parseContractJson(await readContract("get_claim", [claimId]), null));
 }
 
 async function purchasePolicy({ wallet, templateId, coverageArea, coverageAmount, expiryBlock, triggerOverrides }) {
