@@ -49,7 +49,37 @@ export default function FileClaimTab({
 
   const { score, breakdown } = calcEvidenceScore(sourceUrls);
   const selectedPolicy = activePolicies.find(p => p.policy_id === policyId);
-  const canSubmit = !submitting && score >= 70 && !!policyId && description.trim().length > 10;
+  const policyComplete = Boolean(selectedPolicy);
+  const descriptionComplete = description.trim().length >= 10;
+  const sourceCountReady = sourceUrls.length >= 2;
+  const evidenceReady = sourceCountReady && score >= 70;
+  const canSubmit = !submitting && policyComplete && descriptionComplete && evidenceReady;
+  const currentStep = !policyComplete ? 1 : !descriptionComplete ? 2 : !evidenceReady ? 3 : 4;
+  const nextInstruction = !policyComplete
+    ? "Choose the active policy this claim belongs to."
+    : !descriptionComplete
+      ? "Describe what happened, including the date, location, and impact."
+      : !sourceCountReady
+        ? "Add at least two trusted source URLs, one per line."
+        : score < 70
+          ? "Improve the evidence score to 70 or higher before submitting."
+          : wallet
+            ? "Review the claim details, then submit it to GenLayer validators."
+            : "Enter your wallet address in the header, then submit the claim.";
+
+  const stepBadge = (step: number, complete: boolean, active: boolean) => (
+    <span
+      className={`w-5 h-5 sm:w-6 sm:h-6 text-2xs sm:text-xs rounded-full flex items-center justify-center font-bold shrink-0 transition-colors ${
+        complete
+          ? "bg-accent-500 text-white"
+          : active
+            ? "bg-brand-600 text-white"
+            : "bg-ink-100 text-ink-400"
+      }`}
+    >
+      {complete ? <CheckCircle className="w-3.5 h-3.5" /> : step}
+    </span>
+  );
 
   const resetForm = () => {
     setPolicyId("");
@@ -132,11 +162,17 @@ export default function FileClaimTab({
         </div>
       ) : (
         <div className="space-y-6">
+          <div className="rounded-xl border border-brand-100 bg-brand-50 px-4 py-3">
+            <p className="text-2xs font-bold uppercase text-brand-600 tracking-wide mb-1">
+              Step {currentStep} of 4
+            </p>
+            <p className="text-sm text-ink-700">{nextInstruction}</p>
+          </div>
 
           {/* Step 1 — Policy */}
           <div className="card p-4 sm:p-5">
             <div className="flex items-center gap-2 mb-4">
-              <span className="w-5 h-5 sm:w-6 sm:h-6 bg-brand-600 text-white text-2xs sm:text-xs rounded-full flex items-center justify-center font-bold shrink-0">1</span>
+              {stepBadge(1, policyComplete, currentStep === 1)}
               <h2 className="text-sm font-semibold text-ink-700">Select policy</h2>
             </div>
             <select
@@ -147,7 +183,7 @@ export default function FileClaimTab({
               <option value="">— choose a policy —</option>
               {activePolicies.map(p => (
                 <option key={p.policy_id} value={p.policy_id}>
-                  <span className="hidden sm:inline">{p.policy_id.slice(-8)} · </span>{p.coverage_area} · {formatGEN(p.coverage_amount)}
+                  {p.policy_id.slice(-8)} · {p.coverage_area} · {formatGEN(p.coverage_amount)}
                 </option>
               ))}
             </select>
@@ -171,154 +207,162 @@ export default function FileClaimTab({
           </div>
 
           {/* Step 2 — Description */}
-          <div className="card p-4 sm:p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-5 h-5 sm:w-6 sm:h-6 bg-brand-600 text-white text-2xs sm:text-xs rounded-full flex items-center justify-center font-bold shrink-0">2</span>
-              <h2 className="text-sm font-semibold text-ink-700">Describe the event</h2>
+          {policyComplete && (
+            <div className="card p-4 sm:p-5 animate-fade-in">
+              <div className="flex items-center gap-2 mb-4">
+                {stepBadge(2, descriptionComplete, currentStep === 2)}
+                <h2 className="text-sm font-semibold text-ink-700">Describe the event</h2>
+              </div>
+              <textarea
+                className="input resize-none"
+                rows={4}
+                placeholder="Be specific: include the date, location, and scale of the event.&#10;&#10;Example: 'Major flooding hit Lagos Island on June 12 2026. Approximately 8,500 residents were displaced according to NIHSA. Water levels reached 2.3m in low-lying areas.'"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+              />
+              <p className={`text-xs mt-1.5 ${descriptionComplete ? "text-accent-600" : "text-ink-400"}`}>
+                {description.trim().length}/500 characters {descriptionComplete ? "✓" : "(minimum 10)"}
+              </p>
             </div>
-            <textarea
-              className="input resize-none"
-              rows={4}
-              placeholder="Be specific: include the date, location, and scale of the event.&#10;&#10;Example: 'Major flooding hit Lagos Island on June 12 2026. Approximately 8,500 residents were displaced according to NIHSA. Water levels reached 2.3m in low-lying areas.'"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-            />
-            <p className={`text-xs mt-1.5 ${description.length < 10 ? "text-ink-400" : "text-accent-600"}`}>
-              {description.length}/500 characters {description.length < 10 ? "(minimum 10)" : "✓"}
-            </p>
-          </div>
+          )}
 
           {/* Step 3 — Evidence */}
-          <div className="card p-4 sm:p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <span className="w-5 h-5 sm:w-6 sm:h-6 bg-brand-600 text-white text-2xs sm:text-xs rounded-full flex items-center justify-center font-bold shrink-0">3</span>
-              <h2 className="text-sm font-semibold text-ink-700">Evidence sources</h2>
-            </div>
-            <p className="text-xs text-ink-400 mb-3">
-              One URL per line. Must be from trusted domains. Aim for at least 3 different source types.
-            </p>
-            <textarea
-              className="input font-mono text-xs resize-none"
-              rows={5}
-              placeholder={"https://nihsa.gov.ng/flood-alert-lagos-june-2026\nhttps://channelstv.com/flooding-lagos-2026\nhttps://open-meteo.com/forecast/lagos"}
-              value={urlInput}
-              onChange={e => setUrlInput(e.target.value)}
-            />
-
-            {/* Trusted domains accordion */}
-            <details className="mt-3">
-              <summary className="text-xs text-brand-600 cursor-pointer hover:underline select-none">
-                View accepted domains per source type →
-              </summary>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {Object.entries(TRUSTED_EXAMPLES).map(([type, domains]) => (
-                  <div key={type} className="bg-ink-50 border border-ink-100 rounded-lg p-2.5">
-                    <p className="text-xs font-semibold text-ink-700 mb-1">
-                      {SOURCE_ICONS[type]} {type}
-                      <span className="text-ink-400 font-normal ml-1">({SOURCE_POINTS[type]}pts)</span>
-                    </p>
-                    {domains.map(d => (
-                      <p key={d} className="text-xs text-ink-400 font-mono">{d}</p>
-                    ))}
-                  </div>
-                ))}
+          {policyComplete && descriptionComplete && (
+            <div className="card p-4 sm:p-5 animate-fade-in">
+              <div className="flex items-center gap-2 mb-4">
+                {stepBadge(3, evidenceReady, currentStep === 3)}
+                <h2 className="text-sm font-semibold text-ink-700">Evidence sources</h2>
               </div>
-            </details>
+              <p className="text-xs text-ink-400 mb-3">
+                One URL per line. Must be from trusted domains. Aim for at least 3 different source types.
+              </p>
+              <textarea
+                className="input font-mono text-xs resize-none"
+                rows={5}
+                placeholder={"https://nihsa.gov.ng/flood-alert-lagos-june-2026\nhttps://channelstv.com/flooding-lagos-2026\nhttps://open-meteo.com/forecast/lagos"}
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+              />
 
-            {/* Live score preview */}
-            {sourceUrls.length > 0 && (
-              <div className={`mt-4 rounded-xl p-4 border ${score >= 70 ? "bg-accent-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-ink-700">Evidence score</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-xl font-bold ${score >= 70 ? "text-accent-600" : "text-amber-600"}`}>
-                      {score}
-                    </span>
-                    <span className="text-ink-400 text-sm">/100</span>
-                    {score >= 70
-                      ? <CheckCircle className="w-5 h-5 text-accent-500" />
-                      : <AlertTriangle className="w-5 h-5 text-amber-500" />}
-                  </div>
-                </div>
-
-                {/* Per-type bars */}
-                <div className="space-y-2 mb-4">
-                  {Object.entries(SOURCE_POINTS).map(([type, maxPts]) => {
-                    const earned = breakdown[type] ?? 0;
-                    return (
-                      <div key={type} className="flex items-center gap-2.5">
-                        <span className="text-sm w-4 shrink-0">{SOURCE_ICONS[type]}</span>
-                        <div className="flex-1 bg-white/70 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className={`h-1.5 rounded-full transition-all duration-300 ${earned > 0 ? "bg-brand-500" : "bg-transparent"}`}
-                            style={{ width: `${(earned / maxPts) * 100}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-ink-500 w-32 shrink-0 capitalize">
-                          {type}: <strong>{earned}</strong>/{maxPts}pts
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Threshold bar */}
-                <div className="relative">
-                  <div className="h-2.5 bg-ink-200 rounded-full overflow-hidden">
-                    <div
-                      className={`h-2.5 rounded-full transition-all duration-500 ${score >= 70 ? "bg-accent-500" : "bg-amber-400"}`}
-                      style={{ width: `${Math.min(score, 100)}%` }}
-                    />
-                  </div>
-                  <div
-                    className="absolute top-0 h-2.5 w-0.5 bg-ink-600"
-                    style={{ left: "70%" }}
-                  />
-                  <span className="text-xs text-ink-500 absolute -bottom-4" style={{ left: "70%", transform: "translateX(-50%)" }}>
-                    70 min
-                  </span>
-                </div>
-
-                {score < 70 && (
-                  <p className="text-xs text-amber-700 mt-6 font-medium">
-                    ⚠ Need {70 - score} more points.
-                    {!breakdown["government"] && " Add a government source (+35pts)."}
-                    {!breakdown["satellite"]  && !breakdown["government"] && " Or a satellite source (+25pts)."}
-                  </p>
-                )}
-
-                {/* Valid URL list */}
-                <div className="mt-3 pt-3 border-t border-white/50">
-                  <p className="text-xs font-medium text-ink-600 mb-1.5">Accepted URLs ({sourceUrls.length}):</p>
-                  {sourceUrls.map(url => (
-                    <div key={url} className="flex items-center gap-1.5 text-xs text-ink-500 mb-0.5">
-                      <ExternalLink className="w-2.5 h-2.5 shrink-0 text-blue-400" />
-                      <span className="truncate min-w-0 flex-1">{url}</span>
-                      <span className="text-ink-400 shrink-0">→ {detectSourceType(url)}</span>
+              {/* Trusted domains accordion */}
+              <details className="mt-3">
+                <summary className="text-xs text-brand-600 cursor-pointer hover:underline select-none">
+                  View accepted domains per source type →
+                </summary>
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {Object.entries(TRUSTED_EXAMPLES).map(([type, domains]) => (
+                    <div key={type} className="bg-ink-50 border border-ink-100 rounded-lg p-2.5">
+                      <p className="text-xs font-semibold text-ink-700 mb-1">
+                        {SOURCE_ICONS[type]} {type}
+                        <span className="text-ink-400 font-normal ml-1">({SOURCE_POINTS[type]}pts)</span>
+                      </p>
+                      {domains.map(d => (
+                        <p key={d} className="text-xs text-ink-400 font-mono">{d}</p>
+                      ))}
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
+              </details>
+
+              {/* Live score preview */}
+              {sourceUrls.length > 0 && (
+                <div className={`mt-4 rounded-xl p-4 border ${score >= 70 ? "bg-accent-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-ink-700">Evidence score</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xl font-bold ${score >= 70 ? "text-accent-600" : "text-amber-600"}`}>
+                        {score}
+                      </span>
+                      <span className="text-ink-400 text-sm">/100</span>
+                      {score >= 70
+                        ? <CheckCircle className="w-5 h-5 text-accent-500" />
+                        : <AlertTriangle className="w-5 h-5 text-amber-500" />}
+                    </div>
+                  </div>
+
+                  {/* Per-type bars */}
+                  <div className="space-y-2 mb-4">
+                    {Object.entries(SOURCE_POINTS).map(([type, maxPts]) => {
+                      const earned = breakdown[type] ?? 0;
+                      return (
+                        <div key={type} className="flex items-center gap-2.5">
+                          <span className="text-sm w-4 shrink-0">{SOURCE_ICONS[type]}</span>
+                          <div className="flex-1 bg-white/70 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-1.5 rounded-full transition-all duration-300 ${earned > 0 ? "bg-brand-500" : "bg-transparent"}`}
+                              style={{ width: `${(earned / maxPts) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-ink-500 w-32 shrink-0 capitalize">
+                            {type}: <strong>{earned}</strong>/{maxPts}pts
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Threshold bar */}
+                  <div className="relative">
+                    <div className="h-2.5 bg-ink-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-2.5 rounded-full transition-all duration-500 ${score >= 70 ? "bg-accent-500" : "bg-amber-400"}`}
+                        style={{ width: `${Math.min(score, 100)}%` }}
+                      />
+                    </div>
+                    <div
+                      className="absolute top-0 h-2.5 w-0.5 bg-ink-600"
+                      style={{ left: "70%" }}
+                    />
+                    <span className="text-xs text-ink-500 absolute -bottom-4" style={{ left: "70%", transform: "translateX(-50%)" }}>
+                      70 min
+                    </span>
+                  </div>
+
+                  {score < 70 && (
+                    <p className="text-xs text-amber-700 mt-6 font-medium">
+                      ⚠ Need {70 - score} more points.
+                      {!breakdown["government"] && " Add a government source (+35pts)."}
+                      {!breakdown["satellite"]  && !breakdown["government"] && " Or a satellite source (+25pts)."}
+                    </p>
+                  )}
+
+                  {/* Valid URL list */}
+                  <div className="mt-3 pt-3 border-t border-white/50">
+                    <p className="text-xs font-medium text-ink-600 mb-1.5">Accepted URLs ({sourceUrls.length}):</p>
+                    {sourceUrls.map(url => (
+                      <div key={url} className="flex items-center gap-1.5 text-xs text-ink-500 mb-0.5">
+                        <ExternalLink className="w-2.5 h-2.5 shrink-0 text-blue-400" />
+                        <span className="truncate min-w-0 flex-1">{url}</span>
+                        <span className="text-ink-400 shrink-0">→ {detectSourceType(url)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Submit */}
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="btn-primary w-full py-3.5 sm:py-4 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-40"
-          >
-            {submitting
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting to validators...</>
-              : "Submit claim to GenLayer validators"
-            }
-          </button>
+          {policyComplete && descriptionComplete && (
+            <>
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="btn-primary w-full py-3.5 sm:py-4 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-40"
+              >
+                {submitting
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting to validators...</>
+                  : "Submit claim to GenLayer validators"
+                }
+              </button>
 
-          {!wallet && (
-            <p className="text-xs text-center text-red-500">⚠ Enter your wallet address in the header to submit</p>
-          )}
-          {wallet && score < 70 && sourceUrls.length > 0 && (
-            <p className="text-xs text-center text-amber-600">Evidence score must reach 70 before submitting</p>
+              {!wallet && evidenceReady && (
+                <p className="text-xs text-center text-red-500">⚠ Enter your wallet address in the header to submit</p>
+              )}
+              {wallet && sourceUrls.length > 0 && !evidenceReady && (
+                <p className="text-xs text-center text-amber-600">Evidence needs at least 2 URLs and a score of 70 before submitting</p>
+              )}
+            </>
           )}
 
         </div>
