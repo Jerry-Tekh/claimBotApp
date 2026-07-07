@@ -22,6 +22,7 @@ from genlayer import *
 import json
 import re
 import hashlib
+import time
 
 
 @gl.evm.contract_interface
@@ -57,6 +58,10 @@ EMERGENCY_RESERVE_BPS  = 2500   # 25% of premiums → locked
 DAO_FEE_BPS            = 500    # 5% of premiums → DAO treasury
 MAX_SINGLE_PAYOUT_BPS  = 1000   # Max 10% of pool per single payout
 GOVERNANCE_TIMELOCK_BLOCKS = 200   # blocks before a passed proposal can execute
+
+
+def _current_time() -> u256:
+    return u256(int(time.time()))
 
 # Trusted evidence domains (prevents fake-URL scoring)
 TRUSTED_DOMAINS = frozenset([
@@ -314,7 +319,7 @@ class ClaimBot(gl.Contract):
         """
         self._assert_not_paused()
         caller = gl.message.sender_address
-        block  = gl.message.block_number
+        block  = _current_time()
         value  = gl.message.value
 
         if policy_id in self.policies:
@@ -407,7 +412,7 @@ class ClaimBot(gl.Contract):
         """
         self._assert_not_paused()
         caller = str(gl.message.sender_address)
-        block  = gl.message.block_number
+        block  = _current_time()
         source_urls = _parse_json_list(
             source_urls_json, "source_urls", min_items=MIN_SOURCE_URLS
         )
@@ -602,7 +607,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         Use: genlayer-cli transactions appeal <tx_hash>
         """
         caller = str(gl.message.sender_address)
-        block  = gl.message.block_number
+        block  = _current_time()
         additional_sources = _parse_json_list(
             additional_sources_json, "additional_sources", min_items=1
         )
@@ -736,7 +741,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
     def cancel_policy(self, policy_id: str) -> None:
         """Cancel within cooling-off window and receive premium refund."""
         caller = str(gl.message.sender_address)
-        block  = gl.message.block_number
+        block  = _current_time()
 
         policy = self._get_policy(policy_id)
         if policy["holder"] != caller:
@@ -826,7 +831,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
     @gl.public.view
     def is_claimable(self, policy_id: str) -> str:
         policy = self._get_policy(policy_id)
-        block  = gl.message.block_number
+        block  = _current_time()
         if not policy["active"]:
             return json.dumps({"claimable": False, "reason": "Policy not active"})
         if policy["paid_out"]:
@@ -836,7 +841,7 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         if block > policy["expiry_block"]:
             return json.dumps({"claimable": False, "reason": "Policy expired"})
         if block <= policy["cooling_off_until"]:
-            return json.dumps({"claimable": False, "reason": f"Cooling-off until block {policy['cooling_off_until']}"})
+            return json.dumps({"claimable": False, "reason": f"Cooling-off until timestamp {policy['cooling_off_until']}"})
         return json.dumps({"claimable": True, "reason": "Eligible"})
 
     @gl.public.view
@@ -919,10 +924,10 @@ Return ONLY valid JSON. No markdown fences. No other text."""
         before an admin can execute it.
         """
         caller = str(gl.message.sender_address)
-        raw = f"{caller}:{proposal_type}:{gl.message.block_number}"
+        block = _current_time()
+        raw = f"{caller}:{proposal_type}:{block}"
         proposal_id = "PROP-" + hashlib.sha256(raw.encode()).hexdigest()[:12].upper()
 
-        block = gl.message.block_number
         cfg   = self._get_config()
         payload = _parse_json_object(payload_json, "payload")
 
@@ -974,9 +979,9 @@ Return ONLY valid JSON. No markdown fences. No other text."""
             raise gl.vm.UserError("Proposal already executed")
         if proposal["votes_for"] <= proposal["votes_against"]:
             raise gl.vm.UserError("Proposal did not pass (votes_for must exceed votes_against)")
-        if gl.message.block_number < proposal["executable_after"]:
+        if _current_time() < proposal["executable_after"]:
             raise gl.vm.UserError(
-                f"Timelock active — executable at block {proposal['executable_after']}"
+                f"Timelock active — executable at timestamp {proposal['executable_after']}"
             )
 
         cfg     = self._get_config()

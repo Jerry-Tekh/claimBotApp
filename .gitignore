@@ -17,6 +17,7 @@ build/
 .env.test.local
 .env.production.local
 .env.deployed
+.env.bradbury
 
 # Python
 __pycache__/

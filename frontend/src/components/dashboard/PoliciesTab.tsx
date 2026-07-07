@@ -19,6 +19,10 @@ const POLICY_ICONS: Record<string, React.ReactNode> = {
   cargo:  <Anchor   className="w-5 h-5 text-amber-500" />,
 };
 
+function defaultExpiryTimestamp() {
+  return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+}
+
 function statusBadge(policy: Policy) {
   if (policy.paid_out)  return <span className="badge badge-blue">paid out</span>;
   if (policy.cancelled) return <span className="badge badge-gray">cancelled</span>;
@@ -176,7 +180,7 @@ function BuyModal({
         templateId,
         coverageArea:     area.trim(),
         coverageAmount:   Math.round(coverage * 1e9),
-        expiryBlock:      999_999,
+        expiryBlock:      defaultExpiryTimestamp(),
         triggerOverrides: { area: area.trim() },
       });
       notify("success", `Policy purchased! ID: ${result.policy_id.slice(-8)}`);

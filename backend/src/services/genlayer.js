@@ -21,6 +21,10 @@ const TEMPLATE_PREMIUM_BPS = {
   "port-strike": 250,
 };
 
+function defaultExpiryTimestamp() {
+  return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+}
+
 // ── Mock templates ────────────────────────────────────────
 
 const MOCK_TEMPLATES = [
@@ -320,7 +324,7 @@ async function purchasePolicy({ wallet, templateId, coverageArea, coverageAmount
     templateId,
     coverageArea,
     coverageAmount,
-    expiryBlock ?? 999_999,
+    expiryBlock ?? defaultExpiryTimestamp(),
     triggerOverride,
   ], { from: wallet, value: premium });
   return { tx_hash: txHash, policy_id: policyId };

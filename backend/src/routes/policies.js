@@ -11,6 +11,10 @@ const TEMPLATE_META = {
   "port-strike": { policyType: "cargo", premiumBps: 250 },
 };
 
+function defaultExpiryTimestamp() {
+  return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+}
+
 // GET /api/policies/:wallet
 router.get("/:wallet", async (req, res, next) => {
   try {
@@ -63,7 +67,7 @@ router.post("/purchase", async (req, res, next) => {
     }
 
     const result = await gl.purchasePolicy({
-      wallet, templateId, coverageArea, coverageAmount, expiryBlock: expiryBlock ?? 999999, triggerOverrides: triggerOverrides ?? {},
+      wallet, templateId, coverageArea, coverageAmount, expiryBlock: expiryBlock ?? defaultExpiryTimestamp(), triggerOverrides: triggerOverrides ?? {},
     });
 
     // Persist to DB
@@ -81,7 +85,7 @@ router.post("/purchase", async (req, res, next) => {
           triggerOverrides?.area ?? coverageArea,
           coverageAmount,
           Math.round((coverageAmount * meta.premiumBps) / 10000),
-          expiryBlock ?? 999999, 0, "active", result.tx_hash,
+          expiryBlock ?? defaultExpiryTimestamp(), 0, "active", result.tx_hash,
         ]
       );
     } catch (dbErr) {

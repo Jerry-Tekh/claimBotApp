@@ -51,6 +51,14 @@ function stableId(prefix) {
   return `${prefix}-${stamp}`;
 }
 
+function defaultExpiryTimestamp() {
+  return BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -60,11 +68,7 @@ function txSucceeded(receipt) {
   const resultName = receipt.txExecutionResultName;
   return (
     resultName === ExecutionResult.FINISHED_WITH_RETURN ||
-    resultName === "SUCCESS" ||
-    resultName === "ACCEPTED" ||
-    resultName === "FINALIZED" ||
-    receipt.statusName === "ACCEPTED" ||
-    receipt.statusName === "FINALIZED"
+    resultName === "FINISHED_WITH_RETURN"
   );
 }
 
@@ -78,7 +82,7 @@ async function waitAccepted(hash, label, retries = 90) {
   });
   console.log(`${label} receipt status: ${receipt.statusName ?? receipt.status ?? "unknown"}`);
   if (!txSucceeded(receipt)) {
-    console.log(JSON.stringify(receipt, null, 2));
+    console.log(JSON.stringify(receipt, (_, value) => typeof value === "bigint" ? value.toString() : value, 2));
     throw new Error(`${label} did not finish successfully`);
   }
   return receipt;
@@ -163,7 +167,7 @@ async function testContract(address) {
   const claimId = stableId("CLM-BRADBURY");
   const coverageAmount = 1_000_000_000n;
   const premium = 20_000_000n;
-  const expiryBlock = 999_999_999n;
+  const expiryBlock = defaultExpiryTimestamp();
 
   await write(
     address,
@@ -190,9 +194,16 @@ async function testContract(address) {
   assert(walletPolicies.some((entry) => entry.policy_id === policyId || entry === policyId), "wallet policy list missing purchased policy");
   console.log(`get_wallet_policies OK: ${walletPolicies.length} policies`);
 
-  const claimable = await read(address, "is_claimable", [policyId]);
+  let claimable = await read(address, "is_claimable", [policyId]);
   assert(claimable && typeof claimable === "object", "is_claimable did not return an object");
   console.log(`is_claimable OK: claimable=${claimable.claimable}`);
+
+  if (claimable.claimable !== true && String(claimable.reason || "").includes("Cooling-off")) {
+    console.log("Waiting 60 seconds for cooling-off window before file_claim...");
+    await sleep(60_000);
+    claimable = await read(address, "is_claimable", [policyId]);
+    console.log(`is_claimable after wait: claimable=${claimable.claimable}`);
+  }
 
   if (claimable.claimable === true) {
     await write(
@@ -221,7 +232,7 @@ async function testContract(address) {
     assert(walletClaims.some((entry) => entry.claim_id === claimId), "wallet claims missing filed claim");
     console.log(`get_wallet_claims OK: ${walletClaims.length} claims`);
   } else {
-    console.log(`file_claim skipped: ${claimable.reason || "policy not claimable yet"}`);
+    throw new Error(`Policy was not claimable after cooling-off wait: ${claimable.reason || "unknown reason"}`);
   }
 
   const stats = await read(address, "get_global_stats");
