@@ -183,21 +183,38 @@ when the container starts.
 
 ## With Real GenLayer Contract
 
+The deployed Bradbury contract is:
+
 ```bash
-# 1. Install GenLayer SDK
-pip install genlayer-sdk
+CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
+GENLAYER_ENDPOINT=https://rpc-bradbury.genlayer.com
+```
 
-# 2. Deploy the contract
-python deployment/deploy.py \
-  --contract contracts/claimbot_main.py \
-  --network testnet \
-  --endpoint https://testnet.genlayer.com
+When `DEMO_MODE=false`, backend writes are signed by `GENLAYER_PRIVATE_KEY`
+using the GenLayer JavaScript SDK. Because the contract reads
+`gl.message.sender_address`, the backend signer becomes the on-chain policy
+holder and claimant for purchases, claims, cancellations, and appeals. Treat
+this as a server-signed/custodial flow until browser wallet signing is added.
 
-# 3. Copy the output address to both .env files:
-#    backend/.env  → CONTRACT_ADDRESS=0x...
-#    frontend/.env.local → NEXT_PUBLIC_CONTRACT_ADDRESS=0x...
+Render backend environment:
 
-# 4. Set DEMO_MODE=false in backend/.env
+```bash
+DEMO_MODE=false
+NODE_ENV=production
+RUN_MIGRATIONS=false
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=verify-full
+GENLAYER_ENDPOINT=https://rpc-bradbury.genlayer.com
+CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
+GENLAYER_PRIVATE_KEY=0x...
+FRONTEND_URL=https://YOUR-VERCEL-APP.vercel.app
+```
+
+Vercel frontend environment:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://claimbotapp.onrender.com
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
+NEXT_PUBLIC_GENLAYER_RPC=https://rpc-bradbury.genlayer.com
 ```
 
 ---
