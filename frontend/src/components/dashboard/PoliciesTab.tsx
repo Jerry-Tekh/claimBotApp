@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ChevronDown, ChevronUp, Plus, Droplets, Wheat,
@@ -165,7 +165,13 @@ function BuyModal({
   const template   = templates.find(t => t.id === templateId);
   const coverage   = parseFloat(coverageGEN) || 0;
   const premiumGEN = template ? calcPremium(coverage, template.base_premium_bps) : 0;
-  const canBuy     = !submitting && !!wallet && area.trim().length > 3 && coverage > 0;
+  const canBuy     = !submitting && !!wallet && !!templateId && area.trim().length > 3 && coverage > 0;
+
+  useEffect(() => {
+    if (!templateId && templates.length > 0) {
+      setTemplateId(templates[0].id);
+    }
+  }, [templateId, templates]);
 
   const handleBuy = async () => {
     if (!wallet)          { notify("error",   "Enter your wallet address first."); return; }
@@ -219,22 +225,28 @@ function BuyModal({
           {/* Type selector */}
           <div>
             <label className="label">Coverage type</label>
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              {templates.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => setTemplateId(t.id)}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left text-sm transition-all ${
-                    templateId === t.id
-                      ? "border-brand-500 bg-brand-50 text-brand-700"
-                      : "border-ink-200 hover:border-ink-300 text-ink-600"
-                  }`}
-                >
-                  {POLICY_ICONS[t.policy_type]}
-                  <span className="font-medium text-xs">{t.name.replace(" Insurance", "")}</span>
-                </button>
-              ))}
-            </div>
+            {templates.length === 0 ? (
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-sm text-amber-700">
+                Policy types are still loading. Try Refresh if this does not update.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                {templates.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTemplateId(t.id)}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left text-sm transition-all ${
+                      templateId === t.id
+                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                        : "border-ink-200 hover:border-ink-300 text-ink-600"
+                    }`}
+                  >
+                    {POLICY_ICONS[t.policy_type]}
+                    <span className="font-medium text-xs">{t.name.replace(" Insurance", "")}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {template && (
               <p className="text-xs text-ink-400 mt-2">{template.description}</p>
             )}
