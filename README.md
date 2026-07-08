@@ -170,6 +170,15 @@ DEMO_MODE=false
 DATABASE_URL=postgresql://claimbot:claimbot_dev@localhost:5432/claimbot
 ```
 
+For Neon production databases, use the pooled connection string and prefer:
+
+```bash
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=verify-full
+```
+
+On Render free Docker services, set `RUN_MIGRATIONS=true` to run `backend/schema.sql`
+when the container starts.
+
 ---
 
 ## With Real GenLayer Contract
