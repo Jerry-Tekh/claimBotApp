@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Shield, RefreshCw, X, CheckCircle, AlertCircle, Info, AlertTriangle, Menu } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import { useBrowserWallet } from "@/hooks/useBrowserWallet";
 import { useClaimBot } from "@/hooks/useClaimBot";
 import PoliciesTab    from "./PoliciesTab";
 import FileClaimTab   from "./FileClaimTab";
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [wallet,      setWallet]      = useState("");
   const [mobileMenu,  setMobileMenu]  = useState(false);
   const [walletOpen,  setWalletOpen]  = useState(false);
+  const browserWallet = useBrowserWallet();
 
   const {
     policies, activePolicies, historicPolicies,
@@ -56,6 +58,10 @@ export default function Dashboard() {
     loading, notifs, notify, dismissNotif,
     refresh, watchClaim, checkClaimStatus, claimsForPolicy,
   } = useClaimBot(wallet);
+
+  useEffect(() => {
+    if (browserWallet.account) setWallet(browserWallet.account);
+  }, [browserWallet.account]);
 
   const TABS: { id: Tab; label: string }[] = [
     { id: "policies",   label: activePolicies.length ? `Policies (${activePolicies.length})` : "My Policies" },
@@ -113,6 +119,13 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
+            <button
+              onClick={() => browserWallet.connect().catch(error => notify("error", error instanceof Error ? error.message : "Wallet connection failed"))}
+              disabled={browserWallet.connecting}
+              className="btn-primary py-2 shrink-0"
+            >
+              {browserWallet.connecting ? "Connecting" : browserWallet.account ? "Connected" : "Connect"}
+            </button>
             <button onClick={refresh} disabled={loading} className="btn-secondary py-2 shrink-0">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               <span className="hidden lg:inline">{loading ? "Loading" : "Refresh"}</span>
@@ -122,9 +135,15 @@ export default function Dashboard() {
           {/* Mobile: wallet icon + hamburger */}
           <div className="flex md:hidden items-center gap-2">
             <button
-              onClick={() => setWalletOpen(o => !o)}
+              onClick={() => {
+                if (browserWallet.available) {
+                  browserWallet.connect().catch(error => notify("error", error instanceof Error ? error.message : "Wallet connection failed"));
+                } else {
+                  setWalletOpen(o => !o);
+                }
+              }}
               className={`btn-ghost p-2 ${wallet ? "text-brand-600" : ""}`}
-              title="Set wallet"
+              title={browserWallet.available ? "Connect wallet" : "Set wallet"}
             >
               <Shield className="w-4 h-4" />
             </button>
