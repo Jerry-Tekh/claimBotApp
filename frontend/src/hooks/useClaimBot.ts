@@ -42,52 +42,88 @@ export function useClaimBot(wallet: string) {
   const refresh = useCallback(async () => {
     if (!mountedRef.current) return;
     setLoading(true);
-    try {
-      // Always load public data
-      const [tpls, trs, gstats] = await Promise.all([
-        fetchTemplates(),
-        fetchTreasury(),
-        fetchGlobalStats(),
+    const failures: string[] = [];
+
+    // Always load public data. Keep successful responses even if one endpoint fails.
+    const [tpls, trs, gstats] = await Promise.allSettled([
+      fetchTemplates(),
+      fetchTreasury(),
+      fetchGlobalStats(),
+    ]);
+
+    if (!mountedRef.current) return;
+
+    if (tpls.status === "fulfilled") setTemplates(tpls.value);
+    else failures.push("templates");
+
+    if (trs.status === "fulfilled") setTreasury(trs.value);
+    else failures.push("treasury");
+
+    if (gstats.status === "fulfilled") setStats(gstats.value);
+    else failures.push("analytics");
+
+    // Load wallet-specific data only if wallet is set.
+    if (wallet && wallet.startsWith("0x") && wallet.length >= 10) {
+      const [pols, cls] = await Promise.allSettled([
+        fetchWalletPolicies(wallet),
+        fetchWalletClaims(wallet),
       ]);
       if (!mountedRef.current) return;
-      setTemplates(tpls);
-      setTreasury(trs);
-      setStats(gstats);
 
-      // Load wallet-specific data only if wallet is set
-      if (wallet && wallet.startsWith("0x") && wallet.length >= 10) {
-        const [pols, cls] = await Promise.all([
-          fetchWalletPolicies(wallet),
-          fetchWalletClaims(wallet),
-        ]);
-        if (!mountedRef.current) return;
-        setPolicies(pols ?? []);
-        setClaims(cls ?? []);
-      } else {
-        setPolicies([]);
-        setClaims([]);
-      }
-    } catch (e: unknown) {
-      if (mountedRef.current) {
-        notify("error", "Failed to load data: " + (e instanceof Error ? e.message : "unknown error"));
-      }
-    } finally {
-      if (mountedRef.current) setLoading(false);
+      if (pols.status === "fulfilled") setPolicies(pols.value ?? []);
+      else failures.push("policies");
+
+      if (cls.status === "fulfilled") setClaims(cls.value ?? []);
+      else failures.push("claims");
+    } else {
+      setPolicies([]);
+      setClaims([]);
+    }
+
+    if (failures.length > 0 && mountedRef.current) {
+      notify("error", `Failed to load ${failures.join(", ")}. Check the backend URL and try Refresh.`);
+    }
+
+    if (mountedRef.current) {
+      setLoading(false);
     }
   }, [wallet, notify]);
 
+  const safeRefresh = useCallback(async () => {
+    try {
+      await refresh();
+    } catch (e: unknown) {
+      if (mountedRef.current) {
+        notify("error", "Failed to load data: " + (e instanceof Error ? e.message : "unknown error"));
+        setLoading(false);
+      }
+    }
+  }, [refresh, notify]);
+
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  const watchRefresh = useCallback(() => {
+    refreshRef.current();
+  }, []);
+
+  const activePolicies   = policies.filter(p => p.active && !p.cancelled && !p.paid_out);
+  const historicPolicies = policies.filter(p => !p.active || p.paid_out || p.cancelled);
+
   // Initial load + refresh on wallet change
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    safeRefresh();
+  }, [safeRefresh]);
 
   // Auto-refresh every 30s (only when tab is visible)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") safeRefresh();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [safeRefresh]);
 
   // Poll a specific claim until terminal state
   const watchClaim = useCallback((claimId: string) => {
@@ -118,7 +154,7 @@ export function useClaimBot(wallet: string) {
           notify("success", `✅ Claim approved! Payout transferred to your wallet.`);
           clearInterval(pollingRef.current[claimId]);
           delete pollingRef.current[claimId];
-          refresh();
+          watchRefresh();
         } else if (updated.status === "rejected") {
           notify("warning", `❌ Claim rejected. Score: ${updated.evidence_score}/100. You may appeal.`);
           clearInterval(pollingRef.current[claimId]);
@@ -128,15 +164,12 @@ export function useClaimBot(wallet: string) {
     }, 5000);
 
     pollingRef.current[claimId] = interval;
-  }, [notify, refresh]);
+  }, [notify, watchRefresh]);
 
   const claimsForPolicy = useCallback(
     (policyId: string) => claims.filter(c => c.policy_id === policyId),
     [claims]
   );
-
-  const activePolicies   = policies.filter(p => p.active && !p.cancelled && !p.paid_out);
-  const historicPolicies = policies.filter(p => !p.active || p.paid_out || p.cancelled);
 
   return {
     policies,
@@ -150,7 +183,7 @@ export function useClaimBot(wallet: string) {
     notifs,
     notify,
     dismissNotif,
-    refresh,
+    refresh: safeRefresh,
     watchClaim,
     claimsForPolicy,
   };
