@@ -46,6 +46,31 @@ function rowToClaim(row) {
   };
 }
 
+function finalizeDemoPendingClaim(claim) {
+  if (!gl.DEMO_MODE || claim.status !== "pending") return claim;
+
+  const score = Number(claim.evidence_score || 0) ||
+    Object.values(claim.score_breakdown || {}).reduce((sum, points) => sum + Number(points || 0), 0);
+  const approved = score >= 70;
+
+  return {
+    ...claim,
+    status: approved ? "approved" : "rejected",
+    evidence_score: score,
+    llm_result: {
+      ...(claim.llm_result || {}),
+      event_confirmed: approved,
+      confidence: approved ? "high" : "low",
+      reasoning: approved
+        ? "Demo validators confirmed the submitted event using enough trusted evidence sources."
+        : "Demo validators could not confirm the event with the submitted evidence score.",
+      evidence_quality: approved ? "sufficient" : "insufficient",
+      red_flags: claim.llm_result?.red_flags || [],
+    },
+    payout_triggered: approved,
+  };
+}
+
 function groupClaimRows(rows) {
   const map = new Map();
   for (const row of rows) {
@@ -60,7 +85,7 @@ function groupClaimRows(rows) {
       }
     }
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).map(finalizeDemoPendingClaim);
 }
 
 // ── GET /api/claims/wallet/:wallet ────────────────────────
@@ -112,10 +137,17 @@ router.get("/:claimId/status", async (req, res, next) => {
   try {
     const { claimId } = req.params;
     const dbRes = await query(
-      `SELECT * FROM claims WHERE claim_id = $1`, [claimId]
+      `SELECT c.*, ce.url, ce.source_type, ce.points_awarded
+       FROM claims c
+       LEFT JOIN claim_evidence ce ON c.claim_id = ce.claim_id
+       WHERE c.claim_id = $1`,
+      [claimId]
     ).catch(() => ({ rows: [] }));
 
-    if (dbRes.rows.length > 0) return res.json(rowToClaim(dbRes.rows[0]));
+    if (dbRes.rows.length > 0) {
+      const [claim] = groupClaimRows(dbRes.rows);
+      return res.json(claim);
+    }
     const onChain = await gl.getClaim(claimId);
     if (!onChain) return res.status(404).json({ error: "Claim not found" });
     res.json(onChain);
@@ -135,9 +167,23 @@ router.post("/submit", async (req, res, next) => {
 
     try {
       await query(
-        `INSERT INTO claims (claim_id, policy_id, claimant_wallet, event_description, status, evidence_score, submitted_block, tx_hash)
-         VALUES ($1,$2,$3,$4,'pending',0,0,$5) ON CONFLICT (claim_id) DO NOTHING`,
-        [result.claim_id, policyId, wallet.toLowerCase(), eventDescription, result.tx_hash]
+        `INSERT INTO claims (
+           claim_id, policy_id, claimant_wallet, event_description, status,
+           evidence_score, submitted_block, tx_hash, llm_reasoning, llm_confidence
+         )
+         VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,$9)
+         ON CONFLICT (claim_id) DO NOTHING`,
+        [
+          result.claim_id,
+          policyId,
+          wallet.toLowerCase(),
+          eventDescription,
+          result.status ?? "pending",
+          result.evidence_score ?? 0,
+          result.tx_hash,
+          result.llm_result?.reasoning ?? null,
+          result.llm_result?.confidence ?? null,
+        ]
       );
       for (const url of sourceUrls) {
         const stype = (sourceTypeHints ?? {})[url] ?? detectSourceType(url);

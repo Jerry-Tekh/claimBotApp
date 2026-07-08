@@ -85,7 +85,12 @@ export async function submitClaim(params: {
   eventDescription: string;
   sourceUrls:       string[];
   sourceTypeHints:  Record<string, string>;
-}): Promise<{ claim_id: string; tx_hash: string; status: string }> {
+}): Promise<{
+  claim_id: string;
+  tx_hash: string;
+  status: string;
+  evidence_score?: number;
+}> {
   const { data } = await api.post("/api/claims/submit", params);
   return data;
 }

@@ -22,9 +22,10 @@ const TRUSTED_EXAMPLES: Record<string, string[]> = {
 };
 
 interface SubmittedClaim {
-  claim_id: string;
-  tx_hash:  string;
-  status:   string;
+  claim_id:        string;
+  tx_hash:         string;
+  status:          string;
+  evidence_score?: number;
 }
 
 export default function FileClaimTab({
@@ -109,8 +110,14 @@ export default function FileClaimTab({
       });
 
       setSubmitted(result);
-      notify("info", `Claim ${result.claim_id.slice(-6)} submitted. Validators reviewing (up to 5 min)...`);
-      watchClaim(result.claim_id);
+      if (result.status === "approved") {
+        notify("success", `Claim ${result.claim_id.slice(-6)} approved. Evidence score: ${result.evidence_score ?? score}/100.`);
+      } else if (result.status === "rejected") {
+        notify("warning", `Claim ${result.claim_id.slice(-6)} rejected. Evidence score: ${result.evidence_score ?? score}/100.`);
+      } else {
+        notify("info", `Claim ${result.claim_id.slice(-6)} submitted. Validators reviewing (up to 5 min)...`);
+        watchClaim(result.claim_id);
+      }
       onRefresh();
     } catch (e: unknown) {
       notify("error", "Submission failed: " + (e instanceof Error ? e.message : String(e)));
@@ -121,21 +128,42 @@ export default function FileClaimTab({
 
   // ── Success state ─────────────────────────────────────────
   if (submitted) {
+    const finalStatus = submitted.status === "approved" || submitted.status === "rejected";
+    const approved = submitted.status === "approved";
+
     return (
       <div className="w-full max-w-2xl">
         <h1 className="text-lg sm:text-xl font-semibold text-ink-900 mb-5 sm:mb-6 tracking-tight">File a Claim</h1>
         <div className="card p-8 text-center animate-fade-in">
-          <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+            finalStatus
+              ? approved ? "bg-accent-50" : "bg-red-50"
+              : "bg-brand-50"
+          }`}>
+            {finalStatus ? (
+              approved
+                ? <CheckCircle className="w-8 h-8 text-accent-500" />
+                : <AlertTriangle className="w-8 h-8 text-red-500" />
+            ) : (
+              <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+            )}
           </div>
-          <h2 className="text-lg font-semibold text-ink-800 mb-2">Claim submitted</h2>
+          <h2 className="text-lg font-semibold text-ink-800 mb-2">
+            {finalStatus ? `Claim ${submitted.status}` : "Claim submitted"}
+          </h2>
           <p className="text-sm text-ink-500 mb-1">
             Claim ID: <span className="font-mono font-medium text-ink-700">{submitted.claim_id}</span>
           </p>
+          {submitted.evidence_score !== undefined && (
+            <p className="text-sm text-ink-500 mb-1">
+              Evidence score: <span className="font-semibold text-ink-700">{submitted.evidence_score}/100</span>
+            </p>
+          )}
           <p className="text-xs text-ink-400 font-mono mb-6 truncate">tx: {submitted.tx_hash}</p>
           <p className="text-sm text-ink-600 mb-8">
-            5 independent AI validators are reviewing your evidence on the GenLayer network.
-            You'll see the result under <strong>My Policies → Claims</strong> once confirmed.
+            {finalStatus
+              ? "This claim has already been processed. You can review the result under My Policies."
+              : "5 independent AI validators are reviewing your evidence on the GenLayer network. You'll see the result under My Policies once confirmed."}
           </p>
           <div className="flex gap-3 justify-center">
             <button onClick={resetForm} className="btn-secondary">

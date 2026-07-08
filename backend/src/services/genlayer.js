@@ -21,6 +21,14 @@ const TEMPLATE_PREMIUM_BPS = {
   "port-strike": 250,
 };
 
+const SOURCE_POINTS = {
+  government: 35,
+  satellite:  25,
+  weather:    20,
+  news:       20,
+  logistics:  25,
+};
+
 function defaultExpiryTimestamp() {
   return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
 }
@@ -254,6 +262,80 @@ function normalizeClaim(claim) {
   };
 }
 
+function detectSourceType(url) {
+  const value = String(url || "").toLowerCase();
+  if (/gov\.ng|\.gov|nihsa|nimet|ncdc|nigerian|federal|ministry/.test(value)) return "government";
+  if (/faan|flightaware|flightradar|marinetraffic|portoflagos|nimasa/.test(value)) return "logistics";
+  if (/copernicus|nasa|firms|earthdata|sentinel/.test(value)) return "satellite";
+  if (/weather\.com|open-meteo|wunderground|noaa/.test(value)) return "weather";
+  return "news";
+}
+
+function scoreSources(sourceUrls, sourceTypeHints = {}) {
+  const seen = new Set();
+  const breakdown = {};
+
+  for (const url of sourceUrls || []) {
+    let domain = "";
+    try {
+      domain = new URL(url).hostname.replace("www.", "");
+    } catch {
+      continue;
+    }
+    if (seen.has(domain)) continue;
+    seen.add(domain);
+
+    const sourceType = sourceTypeHints[url] || detectSourceType(url);
+    if (!(sourceType in breakdown)) {
+      breakdown[sourceType] = SOURCE_POINTS[sourceType] ?? 10;
+    }
+  }
+
+  return {
+    breakdown,
+    score: Object.values(breakdown).reduce((sum, points) => sum + points, 0),
+  };
+}
+
+function buildDemoClaimResult({ claimId, wallet, policyId, eventDescription, sourceUrls, sourceTypeHints }) {
+  const { score, breakdown } = scoreSources(sourceUrls, sourceTypeHints);
+  const approved = score >= 70;
+  const status = approved ? "approved" : "rejected";
+  const llmResult = {
+    event_confirmed: approved,
+    confidence: approved ? "high" : "low",
+    reasoning: approved
+      ? "Demo validators confirmed the submitted event using enough trusted evidence sources."
+      : "Demo validators could not confirm the event with the submitted evidence score.",
+    evidence_quality: approved ? "sufficient" : "insufficient",
+    red_flags: [],
+  };
+
+  return {
+    tx_hash: "0x" + crypto.randomBytes(32).toString("hex"),
+    claim_id: claimId,
+    status,
+    evidence_score: score,
+    score_breakdown: breakdown,
+    llm_result: llmResult,
+    claim: {
+      claim_id: claimId,
+      policy_id: policyId,
+      claimant: wallet,
+      event_description: eventDescription,
+      source_urls: sourceUrls,
+      submitted_block: 0,
+      status,
+      evidence_score: score,
+      score_breakdown: breakdown,
+      llm_result: llmResult,
+      payout_triggered: approved,
+      appealed: false,
+      appeal_round: 0,
+    },
+  };
+}
+
 async function readContract(functionName, args = []) {
   return rpcCall("gen_call", {
     to:   CONTRACT_ADDR,
@@ -343,11 +425,7 @@ async function submitClaim({ wallet, policyId, eventDescription, sourceUrls, sou
   const claimId = "CLM-" + crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16).toUpperCase();
 
   if (DEMO_MODE) {
-    return {
-      tx_hash:  "0x" + crypto.randomBytes(32).toString("hex"),
-      claim_id: claimId,
-      status:   "pending",
-    };
+    return buildDemoClaimResult({ claimId, wallet, policyId, eventDescription, sourceUrls, sourceTypeHints });
   }
   const txHash = await writeContract("file_claim", [
     claimId,
