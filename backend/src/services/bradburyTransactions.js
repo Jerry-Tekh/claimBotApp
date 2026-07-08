@@ -79,14 +79,48 @@ function addTransactionInputCount() {
   return Array.isArray(item?.inputs) ? item.inputs.length : 0;
 }
 
+const TX_ID_EVENT_NAMES = ["NewTransaction", "CreatedTransaction"];
+
+function isBytes32(value) {
+  return /^0x[0-9a-fA-F]{64}$/.test(value || "");
+}
+
+function eventSignature(event) {
+  return `${event.name}(${event.inputs.map(input => input.type).join(",")})`;
+}
+
+function txIdEventTopics() {
+  const { testnetBradbury, toEventSelector } = getBradburyContext();
+  return new Set(
+    testnetBradbury.consensusMainContract.abi
+      .filter(entry => entry.type === "event" && TX_ID_EVENT_NAMES.includes(entry.name))
+      .map(entry => toEventSelector(eventSignature(entry)).toLowerCase())
+  );
+}
+
 function extractTxIdFromLogs(logs) {
   const { parseEventLogs, testnetBradbury } = getBradburyContext();
-  const events = parseEventLogs({
-    abi: testnetBradbury.consensusMainContract.abi,
-    eventName: "NewTransaction",
-    logs,
-  });
-  return events[0]?.args?.txId;
+  for (const eventName of TX_ID_EVENT_NAMES) {
+    try {
+      const events = parseEventLogs({
+        abi: testnetBradbury.consensusMainContract.abi,
+        eventName,
+        logs,
+        strict: false,
+      });
+      const txId = events.find(event => isBytes32(event.args?.txId))?.args?.txId;
+      if (txId) return txId;
+    } catch {
+      // Fall through to topic extraction below.
+    }
+  }
+
+  const topics = txIdEventTopics();
+  const txLog = (logs || []).find(log =>
+    topics.has(String(log.topics?.[0] || "").toLowerCase()) &&
+    isBytes32(log.topics?.[1])
+  );
+  return txLog?.topics?.[1];
 }
 
 async function sendSignedWrite(functionName, args = [], value = 0n) {
@@ -155,7 +189,12 @@ async function sendSignedWrite(functionName, args = [], value = 0n) {
 
   const txHash = extractTxIdFromLogs(evmReceipt.logs);
   if (!txHash) {
-    throw new Error(`EVM transaction succeeded but no GenLayer tx id was emitted: ${evmHash}`);
+    const receiptTopics = (evmReceipt.logs || [])
+      .map(log => log.topics?.[0])
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(", ");
+    throw new Error(`EVM transaction succeeded but no GenLayer tx id was emitted: ${evmHash}${receiptTopics ? `; receipt topics: ${receiptTopics}` : ""}`);
   }
 
   const receipt = await waitAccepted(txHash, functionName);
@@ -167,6 +206,7 @@ async function sendSignedWrite(functionName, args = [], value = 0n) {
 }
 
 module.exports = {
+  extractTxIdFromLogs,
   readContract,
   sendSignedWrite,
   toBigInt,

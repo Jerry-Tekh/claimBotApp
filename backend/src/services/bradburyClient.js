@@ -4,7 +4,7 @@
 const { createAccount, createClient, abi } = require("genlayer-js");
 const { testnetBradbury } = require("genlayer-js/chains");
 const { ExecutionResult, TransactionStatus } = require("genlayer-js/types");
-const { encodeFunctionData, parseEventLogs } = require("viem");
+const { encodeFunctionData, parseEventLogs, toEventSelector } = require("viem");
 
 const DEFAULT_ENDPOINT = testnetBradbury.rpcUrls.default.http[0];
 let cached;
@@ -71,6 +71,7 @@ function getBradburyContext() {
     ExecutionResult,
     parseEventLogs,
     testnetBradbury,
+    toEventSelector,
     TransactionStatus,
   };
   return cached;
