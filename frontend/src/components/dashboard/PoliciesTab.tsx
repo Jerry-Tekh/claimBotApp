@@ -7,7 +7,8 @@ import {
   Plane, Anchor, X, Shield,
 } from "lucide-react";
 import type { Policy, Claim, PolicyTemplate, Notification } from "@/types";
-import { purchasePolicy, cancelPolicyApi, formatGEN, formatBPS, calcPremium } from "@/services/api";
+import { recordPolicyCancel, recordPolicyPurchase, formatGEN, formatBPS, calcPremium } from "@/services/api";
+import { cancelPolicyWithWallet, getWalletErrorMessage, purchasePolicyWithWallet } from "@/services/genlayerWallet";
 import ClaimRow from "./ClaimRow";
 import { PolicySkeleton, StatCardSkeleton } from "@/components/ui/Skeleton";
 
@@ -48,11 +49,16 @@ function PolicyCard({
     if (!confirm("Cancel this policy? A refund will be issued if you're within the cooling-off window (first 50 blocks after purchase).")) return;
     setCancelling(true);
     try {
-      await cancelPolicyApi({ wallet: policy.holder, policyId: policy.policy_id });
-      notify("success", "Policy cancellation submitted. Refund in progress.");
+      const result = await cancelPolicyWithWallet({ wallet: policy.holder, policyId: policy.policy_id });
+      await recordPolicyCancel({
+        wallet:   policy.holder,
+        policyId: policy.policy_id,
+        txHash:   result.tx_hash,
+      });
+      notify("success", "Policy cancellation approved in wallet and submitted to Bradbury.");
       onRefresh();
     } catch (e: unknown) {
-      notify("error", "Cancel failed: " + (e instanceof Error ? e.message : String(e)));
+      notify("error", "Cancel failed: " + getWalletErrorMessage(e));
     } finally {
       setCancelling(false);
     }
@@ -181,18 +187,31 @@ function BuyModal({
 
     setSubmitting(true);
     try {
-      const result = await purchasePolicy({
+      const coverageAmount = Math.round(coverage * 1e9);
+      const expiryBlock = defaultExpiryTimestamp();
+      const result = await purchasePolicyWithWallet({
         wallet,
         templateId,
         coverageArea:     area.trim(),
-        coverageAmount:   Math.round(coverage * 1e9),
-        expiryBlock:      defaultExpiryTimestamp(),
+        coverageAmount,
+        expiryBlock,
         triggerOverrides: { area: area.trim() },
+      });
+      await recordPolicyPurchase({
+        wallet,
+        policyId:         result.policy_id,
+        templateId,
+        coverageArea:     area.trim(),
+        coverageAmount,
+        expiryBlock,
+        triggerCondition: result.trigger_condition,
+        premiumPaid:      result.premium_paid,
+        txHash:           result.tx_hash,
       });
       notify("success", `Policy submitted to Bradbury validators. ID: ${result.policy_id.slice(-8)}`);
       onSuccess();
     } catch (e: unknown) {
-      notify("error", "Purchase failed: " + (e instanceof Error ? e.message : String(e)));
+      notify("error", "Purchase failed: " + getWalletErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
@@ -302,7 +321,7 @@ function BuyModal({
           </div>
 
           {!wallet && (
-            <p className="text-xs text-red-500 text-center">⚠ Enter your wallet address in the header first</p>
+            <p className="text-xs text-red-500 text-center">Connect your wallet in the header first</p>
           )}
         </div>
 
@@ -314,8 +333,8 @@ function BuyModal({
             className="btn-primary w-full py-3 text-base disabled:opacity-40"
           >
             {submitting
-              ? "Submitting..."
-              : `Buy for ${premiumGEN.toFixed(4)} GEN`}
+              ? "Awaiting wallet approval..."
+              : `Approve ${premiumGEN.toFixed(4)} GEN`}
           </button>
         </div>
       </motion.div>
