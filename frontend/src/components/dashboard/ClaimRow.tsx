@@ -7,7 +7,8 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, ExternalLink, AlertTriangle } from "lucide-react";
 import type { Claim, Notification } from "@/types";
-import { submitAppeal } from "@/services/api";
+import { recordClaimAppeal } from "@/services/api";
+import { getWalletErrorMessage, submitAppealWithWallet } from "@/services/genlayerWallet";
 
 function statusClass(status: string): string {
   const m: Record<string, string> = {
@@ -43,11 +44,20 @@ export default function ClaimRow({
 
     setLoading(true);
     try {
-      const result = await submitAppeal({
+      const signed = await submitAppealWithWallet({
         wallet:            claim.claimant,
         claimId:           claim.claim_id,
         additionalSources: sources,
         appealStatement:   statement,
+        appealRound:       (claim.appeal_round ?? 0) + 1,
+      });
+
+      const result = await recordClaimAppeal({
+        wallet:            claim.claimant,
+        claimId:           claim.claim_id,
+        additionalSources: sources,
+        appealStatement:   statement,
+        txHash:            signed.tx_hash,
       });
 
       notify("info", `Appeal round ${result.appeal_round} submitted. Awaiting ${result.appeal_round === 1 ? "13" : "25"} validators...`);
@@ -57,7 +67,7 @@ export default function ClaimRow({
       setNewUrls("");
       onRefresh();
     } catch (e: unknown) {
-      notify("error", "Appeal failed: " + (e instanceof Error ? e.message : String(e)));
+      notify("error", "Appeal failed: " + getWalletErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -205,7 +215,7 @@ export default function ClaimRow({
                       disabled={loading}
                       className="btn-primary text-xs py-1.5"
                     >
-                      {loading ? "Submitting..." : "Submit appeal"}
+                      {loading ? "Awaiting wallet approval..." : "Approve appeal"}
                     </button>
                     <button
                       onClick={() => setAppealing(false)}

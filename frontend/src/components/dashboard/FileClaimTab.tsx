@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { CheckCircle, AlertTriangle, ExternalLink, Loader2, Clock3 } from "lucide-react";
 import type { Policy, Notification } from "@/types";
-import { submitClaim, detectSourceType, calcEvidenceScore, formatGEN, SOURCE_POINTS } from "@/services/api";
+import { recordClaimSubmission, detectSourceType, calcEvidenceScore, formatGEN, SOURCE_POINTS } from "@/services/api";
+import { getWalletErrorMessage, submitClaimWithWallet } from "@/services/genlayerWallet";
 
 const SOURCE_ICONS: Record<string, string> = {
   government: "🏛️",
@@ -66,8 +67,8 @@ export default function FileClaimTab({
         : score < 70
           ? "Improve the evidence score to 70 or higher before submitting."
           : wallet
-            ? "Review the claim details, then submit it to GenLayer validators."
-            : "Enter your wallet address in the header, then submit the claim.";
+            ? "Review the claim details, then approve the GenLayer transaction in your wallet."
+            : "Connect your wallet in the header, then submit the claim.";
 
   const stepBadge = (step: number, complete: boolean, active: boolean) => (
     <span
@@ -102,12 +103,23 @@ export default function FileClaimTab({
       const hints: Record<string, string> = {};
       for (const url of sourceUrls) hints[url] = detectSourceType(url);
 
-      const result = await submitClaim({
+      const signed = await submitClaimWithWallet({
         wallet,
         policyId,
         eventDescription: description,
         sourceUrls,
+        evidenceScore:    score,
+      });
+
+      const result = await recordClaimSubmission({
+        wallet,
+        claimId:          signed.claim_id,
+        policyId,
+        eventDescription: description,
+        sourceUrls,
         sourceTypeHints:  hints,
+        evidenceScore:    score,
+        txHash:           signed.tx_hash,
       });
 
       setSubmitted(result);
@@ -121,7 +133,7 @@ export default function FileClaimTab({
       }
       onCheckStatus(result.claim_id);
     } catch (e: unknown) {
-      notify("error", "Submission failed: " + (e instanceof Error ? e.message : String(e)));
+      notify("error", "Submission failed: " + getWalletErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
@@ -386,13 +398,13 @@ export default function FileClaimTab({
                 className="btn-primary w-full py-3.5 sm:py-4 text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-40"
               >
                 {submitting
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting to validators...</>
-                  : "Submit claim to GenLayer validators"
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Awaiting wallet approval...</>
+                  : "Approve claim transaction"
                 }
               </button>
 
               {!wallet && evidenceReady && (
-                <p className="text-xs text-center text-red-500">⚠ Enter your wallet address in the header to submit</p>
+                <p className="text-xs text-center text-red-500">Connect your wallet in the header to submit</p>
               )}
               {wallet && sourceUrls.length > 0 && !evidenceReady && (
                 <p className="text-xs text-center text-amber-600">Evidence needs at least 2 URLs and a score of 70 before submitting</p>
