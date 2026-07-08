@@ -224,6 +224,9 @@ router.post("/submit", async (req, res, next) => {
       return res.status(400).json({ error: "Missing required fields: wallet, policyId, eventDescription, sourceUrls" });
     if (sourceUrls.length < 2)
       return res.status(400).json({ error: "Minimum 2 source URLs required" });
+    if (!gl.DEMO_MODE) {
+      return res.status(409).json({ error: "Live claim submissions must be approved in the browser wallet. Use /api/claims/record-submit after the client-signed transaction succeeds." });
+    }
 
     const result = await gl.submitClaim({ wallet, policyId, eventDescription, sourceUrls, sourceTypeHints: sourceTypeHints ?? {} });
     const effectiveWallet = gl.getEffectiveWallet(wallet);
@@ -342,6 +345,9 @@ router.post("/appeal", async (req, res, next) => {
     const { wallet, claimId, additionalSources, appealStatement } = req.body;
     if (!wallet || !claimId || !additionalSources?.length || !appealStatement)
       return res.status(400).json({ error: "Missing required fields" });
+    if (!gl.DEMO_MODE) {
+      return res.status(409).json({ error: "Live claim appeals must be approved in the browser wallet. Use /api/claims/record-appeal after the client-signed transaction succeeds." });
+    }
 
     const result = await gl.submitAppeal({ wallet, claimId, additionalSources, appealStatement });
 

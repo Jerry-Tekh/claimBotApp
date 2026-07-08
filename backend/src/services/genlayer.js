@@ -9,7 +9,6 @@
 require("dotenv").config();
 const crypto = require("crypto");
 const bradbury = require("./bradburyTransactions");
-const { getSignerAddress } = require("./bradburyClient");
 
 const DEMO_MODE     = process.env.DEMO_MODE !== "false"; // default ON
 
@@ -33,7 +32,7 @@ function defaultExpiryTimestamp() {
 }
 
 function getEffectiveWallet(wallet) {
-  return DEMO_MODE ? wallet : getSignerAddress();
+  return wallet;
 }
 
 // ── Mock templates ────────────────────────────────────────

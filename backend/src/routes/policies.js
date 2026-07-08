@@ -84,6 +84,9 @@ router.post("/purchase", async (req, res, next) => {
     if (typeof coverageAmount !== "number" || coverageAmount <= 0) {
       return res.status(400).json({ error: "coverageAmount must be a positive number" });
     }
+    if (!gl.DEMO_MODE) {
+      return res.status(409).json({ error: "Live policy purchases must be approved in the browser wallet. Use /api/policies/record-purchase after the client-signed transaction succeeds." });
+    }
 
     const result = await gl.purchasePolicy({
       wallet, templateId, coverageArea, coverageAmount, expiryBlock: expiryBlock ?? defaultExpiryTimestamp(), triggerOverrides: triggerOverrides ?? {},
@@ -191,6 +194,9 @@ router.post("/cancel", async (req, res, next) => {
   try {
     const { wallet, policyId } = req.body;
     if (!wallet || !policyId) return res.status(400).json({ error: "Missing fields" });
+    if (!gl.DEMO_MODE) {
+      return res.status(409).json({ error: "Live policy cancellations must be approved in the browser wallet. Use /api/policies/record-cancel after the client-signed transaction succeeds." });
+    }
 
     const result = await gl.cancelPolicy({ wallet, policyId });
 
