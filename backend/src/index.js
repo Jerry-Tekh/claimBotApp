@@ -50,6 +50,15 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.get("/", (req, res) => {
+  res.json({
+    name: "ClaimBot API",
+    status: "ok",
+    health: "/health",
+    endpoints: ["/api/templates", "/api/policies/:wallet", "/api/claims/wallet/:wallet", "/api/treasury", "/api/stats"],
+  });
+});
+
 // ── API Routes ────────────────────────────────────────────
 // GET /api/templates
 app.use("/api/templates", templateRoutes);
