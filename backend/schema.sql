@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_wallet ON users(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_users_wallet ON users(wallet_address);
 
 -- ── 002_create_policies ──────────────────────────────────
 
@@ -39,10 +39,10 @@ CREATE TABLE IF NOT EXISTS policies (
     updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_policies_wallet   ON policies(wallet_address);
-CREATE INDEX idx_policies_status   ON policies(status);
-CREATE INDEX idx_policies_type     ON policies(policy_type);
-CREATE INDEX idx_policies_area     ON policies(coverage_area);
+CREATE INDEX IF NOT EXISTS idx_policies_wallet   ON policies(wallet_address);
+CREATE INDEX IF NOT EXISTS idx_policies_status   ON policies(status);
+CREATE INDEX IF NOT EXISTS idx_policies_type     ON policies(policy_type);
+CREATE INDEX IF NOT EXISTS idx_policies_area     ON policies(coverage_area);
 
 -- ── 003_create_claims ────────────────────────────────────
 
@@ -65,10 +65,10 @@ CREATE TABLE IF NOT EXISTS claims (
     updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_claims_policy     ON claims(policy_id);
-CREATE INDEX idx_claims_claimant   ON claims(claimant_wallet);
-CREATE INDEX idx_claims_status     ON claims(status);
-CREATE INDEX idx_claims_created    ON claims(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_claims_policy     ON claims(policy_id);
+CREATE INDEX IF NOT EXISTS idx_claims_claimant   ON claims(claimant_wallet);
+CREATE INDEX IF NOT EXISTS idx_claims_status     ON claims(status);
+CREATE INDEX IF NOT EXISTS idx_claims_created    ON claims(created_at DESC);
 
 -- ── 004_create_claim_evidence ────────────────────────────
 
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS claim_evidence (
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_evidence_claim ON claim_evidence(claim_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_claim ON claim_evidence(claim_id);
 
 -- ── 005_create_validator_votes ───────────────────────────
 
@@ -102,8 +102,8 @@ CREATE TABLE IF NOT EXISTS validator_votes (
     voted_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_votes_claim     ON validator_votes(claim_id);
-CREATE INDEX idx_votes_validator ON validator_votes(validator_id);
+CREATE INDEX IF NOT EXISTS idx_votes_claim     ON validator_votes(claim_id);
+CREATE INDEX IF NOT EXISTS idx_votes_validator ON validator_votes(validator_id);
 
 -- ── 006_create_payouts ───────────────────────────────────
 
@@ -120,8 +120,8 @@ CREATE TABLE IF NOT EXISTS payouts (
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_payouts_claim  ON payouts(claim_id);
-CREATE INDEX idx_payouts_holder ON payouts(holder_wallet);
+CREATE INDEX IF NOT EXISTS idx_payouts_claim  ON payouts(claim_id);
+CREATE INDEX IF NOT EXISTS idx_payouts_holder ON payouts(holder_wallet);
 
 -- ── 007_create_treasury_transactions ─────────────────────
 
@@ -137,8 +137,8 @@ CREATE TABLE IF NOT EXISTS treasury_transactions (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_treasury_type    ON treasury_transactions(tx_type);
-CREATE INDEX idx_treasury_created ON treasury_transactions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_treasury_type    ON treasury_transactions(tx_type);
+CREATE INDEX IF NOT EXISTS idx_treasury_created ON treasury_transactions(created_at DESC);
 
 -- ── 008_create_governance_proposals ──────────────────────
 
@@ -172,8 +172,8 @@ CREATE TABLE IF NOT EXISTS fraud_flags (
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_fraud_wallet   ON fraud_flags(wallet);
-CREATE INDEX idx_fraud_severity ON fraud_flags(severity);
+CREATE INDEX IF NOT EXISTS idx_fraud_wallet   ON fraud_flags(wallet);
+CREATE INDEX IF NOT EXISTS idx_fraud_severity ON fraud_flags(severity);
 
 -- ── 010_create_disaster_monitors ─────────────────────────
 
