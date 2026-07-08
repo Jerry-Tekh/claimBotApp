@@ -7,8 +7,8 @@
 // ============================================================
 
 require("dotenv").config();
-const axios  = require("axios");
 const crypto = require("crypto");
+const bradbury = require("./bradburyTransactions");
 
 const ENDPOINT      = process.env.GENLAYER_ENDPOINT || "https://testnet.genlayer.com";
 const CONTRACT_ADDR = process.env.CONTRACT_ADDRESS  || "0x0000000000000000000000000000000000000000";
@@ -189,18 +189,6 @@ const MOCK_STATS = {
   loss_ratio:      3200,
 };
 
-// ── RPC helper ────────────────────────────────────────────
-
-async function rpcCall(method, params) {
-  const res = await axios.post(
-    ENDPOINT,
-    { jsonrpc: "2.0", id: Date.now(), method, params },
-    { timeout: 30_000 }
-  );
-  if (res.data.error) throw new Error(res.data.error.message);
-  return res.data.result;
-}
-
 function parseContractJson(value, fallback) {
   if (value == null) return fallback;
   if (typeof value === "object") return value;
@@ -337,10 +325,7 @@ function buildDemoClaimResult({ claimId, wallet, policyId, eventDescription, sou
 }
 
 async function readContract(functionName, args = []) {
-  return rpcCall("gen_call", {
-    to:   CONTRACT_ADDR,
-    data: { function: functionName, args },
-  });
+  return bradbury.readContract(functionName, args);
 }
 
 async function writeContract(functionName, args = [], { from, value = 0 } = {}) {
