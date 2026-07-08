@@ -9,6 +9,7 @@
 require("dotenv").config();
 const crypto = require("crypto");
 const bradbury = require("./bradburyTransactions");
+const { getSignerAddress } = require("./bradburyClient");
 
 const DEMO_MODE     = process.env.DEMO_MODE !== "false"; // default ON
 
@@ -29,6 +30,10 @@ const SOURCE_POINTS = {
 
 function defaultExpiryTimestamp() {
   return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+}
+
+function getEffectiveWallet(wallet) {
+  return DEMO_MODE ? wallet : getSignerAddress();
 }
 
 // ── Mock templates ────────────────────────────────────────
@@ -333,8 +338,9 @@ async function getTemplates() {
 }
 
 async function getWalletPolicies(wallet) {
-  if (DEMO_MODE) return mockPoliciesForWallet(wallet);
-  return parseContractJson(await readContract("get_wallet_policies", [wallet]), []).map(normalizePolicy);
+  const effectiveWallet = getEffectiveWallet(wallet);
+  if (DEMO_MODE) return mockPoliciesForWallet(effectiveWallet);
+  return parseContractJson(await readContract("get_wallet_policies", [effectiveWallet]), []).map(normalizePolicy);
 }
 
 async function getPolicy(policyId) {
@@ -357,7 +363,7 @@ async function getWalletClaims(wallet) {
     const policies = mockPoliciesForWallet(wallet);
     return mockClaimsForWallet(wallet, policies);
   }
-  return parseContractJson(await readContract("get_wallet_claims", [wallet]), []).map(normalizeClaim);
+  return parseContractJson(await readContract("get_wallet_claims", [getEffectiveWallet(wallet)]), []).map(normalizeClaim);
 }
 
 async function getClaim(claimId) {
@@ -430,4 +436,5 @@ module.exports = {
   submitClaim,
   submitAppeal,
   DEMO_MODE,
+  getEffectiveWallet,
 };

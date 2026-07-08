@@ -93,6 +93,7 @@ router.get("/wallet/:wallet", async (req, res, next) => {
   try {
     const { wallet } = req.params;
     if (!wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet address" });
+    const effectiveWallet = gl.getEffectiveWallet(wallet);
 
     const dbRes = await query(
       `SELECT c.*, ce.url, ce.source_type, ce.points_awarded
@@ -100,7 +101,7 @@ router.get("/wallet/:wallet", async (req, res, next) => {
        LEFT JOIN claim_evidence ce ON c.claim_id = ce.claim_id
        WHERE c.claimant_wallet = $1
        ORDER BY c.created_at DESC`,
-      [wallet.toLowerCase()]
+      [effectiveWallet.toLowerCase()]
     ).catch(() => ({ rows: [] }));
 
     if (dbRes.rows.length > 0) return res.json(groupClaimRows(dbRes.rows));
@@ -164,6 +165,7 @@ router.post("/submit", async (req, res, next) => {
       return res.status(400).json({ error: "Minimum 2 source URLs required" });
 
     const result = await gl.submitClaim({ wallet, policyId, eventDescription, sourceUrls, sourceTypeHints: sourceTypeHints ?? {} });
+    const effectiveWallet = gl.getEffectiveWallet(wallet);
 
     try {
       await query(
@@ -176,7 +178,7 @@ router.post("/submit", async (req, res, next) => {
         [
           result.claim_id,
           policyId,
-          wallet.toLowerCase(),
+          effectiveWallet.toLowerCase(),
           eventDescription,
           result.status ?? "pending",
           result.evidence_score ?? 0,

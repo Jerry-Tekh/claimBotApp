@@ -20,12 +20,13 @@ router.get("/:wallet", async (req, res, next) => {
   try {
     const { wallet } = req.params;
     if (!wallet.startsWith("0x")) return res.status(400).json({ error: "Invalid wallet address" });
+    const effectiveWallet = gl.getEffectiveWallet(wallet);
 
     // Try DB first (faster), fall back to genlayer service on any error
     try {
       const dbRes = await query(
         `SELECT * FROM policies WHERE wallet_address = $1 ORDER BY created_at DESC`,
-        [wallet.toLowerCase()]
+        [effectiveWallet.toLowerCase()]
       );
       if (dbRes.rows.length > 0) {
         return res.json(dbRes.rows.map(rowToPolicy));
@@ -69,6 +70,7 @@ router.post("/purchase", async (req, res, next) => {
     const result = await gl.purchasePolicy({
       wallet, templateId, coverageArea, coverageAmount, expiryBlock: expiryBlock ?? defaultExpiryTimestamp(), triggerOverrides: triggerOverrides ?? {},
     });
+    const effectiveWallet = gl.getEffectiveWallet(wallet);
 
     // Persist to DB
     try {
@@ -76,10 +78,10 @@ router.post("/purchase", async (req, res, next) => {
       await query(
         `INSERT INTO policies (policy_id, wallet_address, template_id, policy_type, coverage_area,
           trigger_condition, coverage_amount, premium_paid, expiry_block, purchase_block, status, tx_hash)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (policy_id) DO NOTHING`,
         [
-          result.policy_id, wallet.toLowerCase(), templateId,
+          result.policy_id, effectiveWallet.toLowerCase(), templateId,
           meta.policyType,
           coverageArea,
           triggerOverrides?.area ?? coverageArea,

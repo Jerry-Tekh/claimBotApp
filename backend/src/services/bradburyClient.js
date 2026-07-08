@@ -54,7 +54,12 @@ function getBradburyContext() {
   return cached;
 }
 
+function getSignerAddress() {
+  return getBradburyContext().account.address;
+}
+
 module.exports = {
   DEFAULT_ENDPOINT,
   getBradburyContext,
+  getSignerAddress,
 };
