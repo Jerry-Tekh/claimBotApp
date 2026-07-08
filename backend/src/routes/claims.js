@@ -22,6 +22,29 @@ function detectSourceType(url) {
 
 const SOURCE_POINTS = { government: 35, satellite: 25, weather: 20, news: 20, logistics: 25 };
 
+function isWalletAddress(value) {
+  return /^0x[0-9a-fA-F]{40}$/.test(value || "");
+}
+
+function isGenLayerTxHash(value) {
+  return /^0x[0-9a-fA-F]{64}$/.test(value || "");
+}
+
+function evidenceScoreFor(sourceUrls, sourceTypeHints = {}) {
+  const seen = new Set();
+  let score = 0;
+
+  for (const url of sourceUrls || []) {
+    const domain = extractDomain(url);
+    if (!domain || seen.has(domain)) continue;
+    seen.add(domain);
+    const sourceType = sourceTypeHints[url] ?? detectSourceType(url);
+    score += SOURCE_POINTS[sourceType] ?? 10;
+  }
+
+  return score;
+}
+
 function rowToClaim(row) {
   return {
     claim_id:          row.claim_id,
@@ -239,6 +262,80 @@ router.post("/submit", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── POST /api/claims/record-submit ───────────────────────
+router.post("/record-submit", async (req, res, next) => {
+  try {
+    const {
+      wallet,
+      claimId,
+      policyId,
+      eventDescription,
+      sourceUrls,
+      sourceTypeHints,
+      evidenceScore,
+      txHash,
+    } = req.body;
+
+    if (!isWalletAddress(wallet)) return res.status(400).json({ error: "Invalid wallet address" });
+    if (!claimId || !policyId || !eventDescription || !Array.isArray(sourceUrls) || !sourceUrls.length || !txHash) {
+      return res.status(400).json({ error: "Missing required fields: wallet, claimId, policyId, eventDescription, sourceUrls, txHash" });
+    }
+    if (!isGenLayerTxHash(txHash)) return res.status(400).json({ error: "Invalid GenLayer transaction hash" });
+    if (sourceUrls.length < 2) return res.status(400).json({ error: "Minimum 2 source URLs required" });
+
+    const score = Number.isInteger(evidenceScore)
+      ? Math.max(0, Math.min(100, evidenceScore))
+      : Math.min(100, evidenceScoreFor(sourceUrls, sourceTypeHints ?? {}));
+
+    await query(
+      `INSERT INTO claims (
+         claim_id, policy_id, claimant_wallet, event_description, status,
+         evidence_score, submitted_block, tx_hash, llm_reasoning, llm_confidence
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,0,$7,$8,$9)
+       ON CONFLICT (claim_id) DO UPDATE SET
+         claimant_wallet = EXCLUDED.claimant_wallet,
+         event_description = EXCLUDED.event_description,
+         status = EXCLUDED.status,
+         evidence_score = EXCLUDED.evidence_score,
+         tx_hash = EXCLUDED.tx_hash,
+         updated_at = NOW()`,
+      [
+        claimId,
+        policyId,
+        wallet.toLowerCase(),
+        eventDescription,
+        "pending",
+        score,
+        txHash,
+        "Submitted to GenLayer validators from the user wallet.",
+        "low",
+      ]
+    );
+
+    for (const url of sourceUrls) {
+      const stype = (sourceTypeHints ?? {})[url] ?? detectSourceType(url);
+      await query(
+        `INSERT INTO claim_evidence (claim_id, url, source_type, domain, points_awarded)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (claim_id, url) DO UPDATE SET
+           source_type = EXCLUDED.source_type,
+           domain = EXCLUDED.domain,
+           points_awarded = EXCLUDED.points_awarded`,
+        [claimId, url, stype, extractDomain(url), SOURCE_POINTS[stype] ?? 10]
+      );
+    }
+
+    res.json({
+      claim_id: claimId,
+      tx_hash: txHash,
+      status: "pending",
+      evidence_score: score,
+      confirmation_status: "submitted",
+    });
+  } catch (err) { next(err); }
+});
+
 // ── POST /api/claims/appeal ───────────────────────────────
 router.post("/appeal", async (req, res, next) => {
   try {
@@ -256,6 +353,50 @@ router.post("/appeal", async (req, res, next) => {
     } catch (dbErr) { console.warn("[DB] appeal update:", dbErr.message); }
 
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/claims/record-appeal ───────────────────────
+router.post("/record-appeal", async (req, res, next) => {
+  try {
+    const { wallet, claimId, additionalSources, appealStatement, txHash } = req.body;
+    if (!isWalletAddress(wallet)) return res.status(400).json({ error: "Invalid wallet address" });
+    if (!claimId || !Array.isArray(additionalSources) || !additionalSources.length || !appealStatement || !txHash) {
+      return res.status(400).json({ error: "Missing required fields: wallet, claimId, additionalSources, appealStatement, txHash" });
+    }
+    if (!isGenLayerTxHash(txHash)) return res.status(400).json({ error: "Invalid GenLayer transaction hash" });
+
+    const dbRes = await query(
+      `UPDATE claims
+       SET status = 'appealed',
+           appeal_round = LEAST(COALESCE(appeal_round, 0) + 1, 2),
+           llm_reasoning = $3,
+           updated_at = NOW()
+       WHERE claim_id = $1 AND claimant_wallet = $2
+       RETURNING appeal_round`,
+      [claimId, wallet.toLowerCase(), appealStatement]
+    );
+    const appealRound = Number(dbRes.rows[0]?.appeal_round ?? 1);
+
+    for (const url of additionalSources) {
+      const stype = detectSourceType(url);
+      await query(
+        `INSERT INTO claim_evidence (claim_id, url, source_type, domain, points_awarded)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (claim_id, url) DO NOTHING`,
+        [claimId, url, stype, extractDomain(url), SOURCE_POINTS[stype] ?? 10]
+      ).catch(() => {});
+    }
+
+    res.json({
+      claim_id: claimId,
+      tx_hash: txHash,
+      confirmation_status: "submitted",
+      appeal_round: appealRound,
+      approved: false,
+      score: 0,
+      reasoning: "Processing",
+    });
   } catch (err) { next(err); }
 });
 

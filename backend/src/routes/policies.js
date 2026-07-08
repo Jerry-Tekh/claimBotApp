@@ -11,8 +11,26 @@ const TEMPLATE_META = {
   "port-strike": { policyType: "cargo", premiumBps: 250 },
 };
 
+function isWalletAddress(value) {
+  return /^0x[0-9a-fA-F]{40}$/.test(value || "");
+}
+
+function isGenLayerTxHash(value) {
+  return /^0x[0-9a-fA-F]{64}$/.test(value || "");
+}
+
 function defaultExpiryTimestamp() {
   return Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+}
+
+function metaForTemplate(templateId) {
+  return TEMPLATE_META[templateId] || { policyType: String(templateId || "").split("-")[0] || "flood", premiumBps: 200 };
+}
+
+function calcPremium(coverageAmount, templateId, premiumPaid) {
+  if (Number.isSafeInteger(premiumPaid) && premiumPaid >= 0) return premiumPaid;
+  const meta = metaForTemplate(templateId);
+  return Math.round((coverageAmount * meta.premiumBps) / 10000);
 }
 
 // GET /api/policies/:wallet
@@ -98,6 +116,76 @@ router.post("/purchase", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/policies/record-purchase
+router.post("/record-purchase", async (req, res, next) => {
+  try {
+    const {
+      wallet,
+      policyId,
+      templateId,
+      coverageArea,
+      coverageAmount,
+      expiryBlock,
+      triggerCondition,
+      premiumPaid,
+      txHash,
+    } = req.body;
+
+    if (!isWalletAddress(wallet)) return res.status(400).json({ error: "Invalid wallet address" });
+    if (!policyId || !templateId || !coverageArea || !txHash) {
+      return res.status(400).json({ error: "Missing required fields: wallet, policyId, templateId, coverageArea, txHash" });
+    }
+    if (!isGenLayerTxHash(txHash)) return res.status(400).json({ error: "Invalid GenLayer transaction hash" });
+    if (!Number.isSafeInteger(coverageAmount) || coverageAmount <= 0) {
+      return res.status(400).json({ error: "coverageAmount must be a positive safe integer" });
+    }
+
+    const meta = metaForTemplate(templateId);
+    const expiresAt = Number.isSafeInteger(expiryBlock) ? expiryBlock : defaultExpiryTimestamp();
+    const premium = calcPremium(coverageAmount, templateId, premiumPaid);
+
+    const dbRes = await query(
+      `INSERT INTO policies (policy_id, wallet_address, template_id, policy_type, coverage_area,
+        trigger_condition, coverage_amount, premium_paid, expiry_block, purchase_block, status, tx_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (policy_id) DO UPDATE SET
+        wallet_address = EXCLUDED.wallet_address,
+        template_id = EXCLUDED.template_id,
+        policy_type = EXCLUDED.policy_type,
+        coverage_area = EXCLUDED.coverage_area,
+        trigger_condition = EXCLUDED.trigger_condition,
+        coverage_amount = EXCLUDED.coverage_amount,
+        premium_paid = EXCLUDED.premium_paid,
+        expiry_block = EXCLUDED.expiry_block,
+        status = CASE WHEN policies.status = 'cancelled' THEN policies.status ELSE EXCLUDED.status END,
+        tx_hash = EXCLUDED.tx_hash,
+        updated_at = NOW()
+       RETURNING *`,
+      [
+        policyId,
+        wallet.toLowerCase(),
+        templateId,
+        meta.policyType,
+        coverageArea,
+        triggerCondition || coverageArea,
+        coverageAmount,
+        premium,
+        expiresAt,
+        0,
+        "active",
+        txHash,
+      ]
+    );
+
+    res.json({
+      policy_id: policyId,
+      tx_hash: txHash,
+      confirmation_status: "submitted",
+      policy: rowToPolicy(dbRes.rows[0]),
+    });
+  } catch (err) { next(err); }
+});
+
 // POST /api/policies/cancel
 router.post("/cancel", async (req, res, next) => {
   try {
@@ -113,6 +201,31 @@ router.post("/cancel", async (req, res, next) => {
     }
 
     res.json(result);
+  } catch (err) { next(err); }
+});
+
+// POST /api/policies/record-cancel
+router.post("/record-cancel", async (req, res, next) => {
+  try {
+    const { wallet, policyId, txHash } = req.body;
+    if (!isWalletAddress(wallet)) return res.status(400).json({ error: "Invalid wallet address" });
+    if (!policyId || !txHash) return res.status(400).json({ error: "Missing required fields: wallet, policyId, txHash" });
+    if (!isGenLayerTxHash(txHash)) return res.status(400).json({ error: "Invalid GenLayer transaction hash" });
+
+    const dbRes = await query(
+      `UPDATE policies
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE policy_id = $1 AND wallet_address = $2
+       RETURNING *`,
+      [policyId, wallet.toLowerCase()]
+    );
+
+    res.json({
+      policy_id: policyId,
+      tx_hash: txHash,
+      confirmation_status: "submitted",
+      policy: dbRes.rows[0] ? rowToPolicy(dbRes.rows[0]) : null,
+    });
   } catch (err) { next(err); }
 });
 
