@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, AlertTriangle, ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle, AlertTriangle, ExternalLink, Loader2, Clock3 } from "lucide-react";
 import type { Policy, Notification } from "@/types";
 import { submitClaim, detectSourceType, calcEvidenceScore, formatGEN, SOURCE_POINTS } from "@/services/api";
 
@@ -131,6 +131,7 @@ export default function FileClaimTab({
   if (submitted) {
     const finalStatus = submitted.status === "approved" || submitted.status === "rejected";
     const approved = submitted.status === "approved";
+    const pending = !finalStatus;
 
     return (
       <div className="w-full max-w-2xl">
@@ -146,12 +147,17 @@ export default function FileClaimTab({
                 ? <CheckCircle className="w-8 h-8 text-accent-500" />
                 : <AlertTriangle className="w-8 h-8 text-red-500" />
             ) : (
-              <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+              <Clock3 className="w-8 h-8 text-brand-500" />
             )}
           </div>
           <h2 className="text-lg font-semibold text-ink-800 mb-2">
             {finalStatus ? `Claim ${submitted.status}` : "Claim submitted"}
           </h2>
+          {pending && (
+            <p className="text-sm font-medium text-brand-600 mb-2">
+              Status: pending validator review
+            </p>
+          )}
           <p className="text-sm text-ink-500 mb-1">
             Claim ID: <span className="font-mono font-medium text-ink-700">{submitted.claim_id}</span>
           </p>
