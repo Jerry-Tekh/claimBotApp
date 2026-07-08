@@ -10,8 +10,6 @@ require("dotenv").config();
 const crypto = require("crypto");
 const bradbury = require("./bradburyTransactions");
 
-const ENDPOINT      = process.env.GENLAYER_ENDPOINT || "https://testnet.genlayer.com";
-const CONTRACT_ADDR = process.env.CONTRACT_ADDRESS  || "0x0000000000000000000000000000000000000000";
 const DEMO_MODE     = process.env.DEMO_MODE !== "false"; // default ON
 
 const TEMPLATE_PREMIUM_BPS = {
@@ -203,11 +201,6 @@ function parseContractJson(value, fallback) {
   }
 }
 
-function toHexWei(value) {
-  const amount = BigInt(Math.max(0, Math.trunc(Number(value) || 0)));
-  return "0x" + amount.toString(16);
-}
-
 function buildTriggerOverride(templateId, coverageArea, triggerOverrides = {}) {
   if (typeof triggerOverrides === "string") return triggerOverrides;
 
@@ -328,13 +321,8 @@ async function readContract(functionName, args = []) {
   return bradbury.readContract(functionName, args);
 }
 
-async function writeContract(functionName, args = [], { from, value = 0 } = {}) {
-  return rpcCall("gen_sendTransaction", {
-    to:   CONTRACT_ADDR,
-    data: { function: functionName, args },
-    from: from || process.env.ADMIN_WALLET || "0x0",
-    value: toHexWei(value),
-  });
+async function writeContract(functionName, args = [], { value = 0 } = {}) {
+  return bradbury.sendSignedWrite(functionName, args, value);
 }
 
 // ── Public API ────────────────────────────────────────────
@@ -386,23 +374,23 @@ async function purchasePolicy({ wallet, templateId, coverageArea, coverageAmount
   }
   const triggerOverride = buildTriggerOverride(templateId, coverageArea, triggerOverrides);
   const premium = Math.round((coverageAmount * (TEMPLATE_PREMIUM_BPS[templateId] || 200)) / 10_000);
-  const txHash = await writeContract("purchase_policy", [
+  const tx = await writeContract("purchase_policy", [
     policyId,
     templateId,
     coverageArea,
     coverageAmount,
     expiryBlock ?? defaultExpiryTimestamp(),
     triggerOverride,
-  ], { from: wallet, value: premium });
-  return { tx_hash: txHash, policy_id: policyId };
+  ], { value: premium });
+  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, policy_id: policyId };
 }
 
 async function cancelPolicy({ wallet, policyId }) {
   if (DEMO_MODE) {
     return { tx_hash: "0x" + crypto.randomBytes(32).toString("hex") };
   }
-  const txHash = await writeContract("cancel_policy", [policyId], { from: wallet });
-  return { tx_hash: txHash };
+  const tx = await writeContract("cancel_policy", [policyId]);
+  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash };
 }
 
 async function submitClaim({ wallet, policyId, eventDescription, sourceUrls, sourceTypeHints }) {
@@ -412,21 +400,21 @@ async function submitClaim({ wallet, policyId, eventDescription, sourceUrls, sou
   if (DEMO_MODE) {
     return buildDemoClaimResult({ claimId, wallet, policyId, eventDescription, sourceUrls, sourceTypeHints });
   }
-  const txHash = await writeContract("file_claim", [
+  const tx = await writeContract("file_claim", [
     claimId,
     policyId,
     eventDescription,
     JSON.stringify(sourceUrls),
-  ], { from: wallet });
-  return { tx_hash: txHash, claim_id: claimId, status: "pending" };
+  ]);
+  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, claim_id: claimId, status: "pending" };
 }
 
 async function submitAppeal({ wallet, claimId, additionalSources, appealStatement }) {
   if (DEMO_MODE) {
     return { claim_id: claimId, appeal_round: 1, approved: false, score: 0, reasoning: "Appeal submitted to validators" };
   }
-  await writeContract("appeal_claim", [claimId, JSON.stringify(additionalSources), appealStatement], { from: wallet });
-  return { claim_id: claimId, appeal_round: 1, approved: false, score: 0, reasoning: "Processing" };
+  const tx = await writeContract("appeal_claim", [claimId, JSON.stringify(additionalSources), appealStatement]);
+  return { claim_id: claimId, tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, appeal_round: 1, approved: false, score: 0, reasoning: "Processing" };
 }
 
 module.exports = {
