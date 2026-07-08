@@ -189,7 +189,7 @@ function BuyModal({
         expiryBlock:      defaultExpiryTimestamp(),
         triggerOverrides: { area: area.trim() },
       });
-      notify("success", `Policy purchased! ID: ${result.policy_id.slice(-8)}`);
+      notify("success", `Policy submitted to Bradbury validators. ID: ${result.policy_id.slice(-8)}`);
       onSuccess();
     } catch (e: unknown) {
       notify("error", "Purchase failed: " + (e instanceof Error ? e.message : String(e)));

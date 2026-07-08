@@ -88,6 +88,36 @@ function groupClaimRows(rows) {
   return Array.from(map.values()).map(finalizeDemoPendingClaim);
 }
 
+async function getLiveClaim(claimId) {
+  if (gl.DEMO_MODE) return null;
+  try {
+    const claim = await gl.getClaim(claimId);
+    return claim?.claim_id ? claim : null;
+  } catch {
+    return null;
+  }
+}
+
+async function persistLiveClaim(claim) {
+  if (!claim?.claim_id) return;
+  await query(
+    `UPDATE claims
+     SET status = $2,
+         evidence_score = $3,
+         llm_reasoning = $4,
+         llm_confidence = $5,
+         updated_at = NOW()
+     WHERE claim_id = $1`,
+    [
+      claim.claim_id,
+      claim.status ?? "pending",
+      Number(claim.evidence_score ?? 0),
+      claim.llm_result?.reasoning ?? null,
+      claim.llm_result?.confidence ?? null,
+    ]
+  ).catch(() => {});
+}
+
 // ── GET /api/claims/wallet/:wallet ────────────────────────
 router.get("/wallet/:wallet", async (req, res, next) => {
   try {
@@ -115,6 +145,12 @@ router.get("/wallet/:wallet", async (req, res, next) => {
 router.get("/:claimId", async (req, res, next) => {
   try {
     const { claimId } = req.params;
+    const liveClaim = await getLiveClaim(claimId);
+    if (liveClaim) {
+      persistLiveClaim(liveClaim);
+      return res.json(liveClaim);
+    }
+
     const dbRes = await query(
       `SELECT c.*, ce.url, ce.source_type, ce.points_awarded
        FROM claims c
@@ -127,9 +163,7 @@ router.get("/:claimId", async (req, res, next) => {
       const [claim] = groupClaimRows(dbRes.rows);
       return res.json(claim);
     }
-    const onChain = await gl.getClaim(claimId);
-    if (!onChain) return res.status(404).json({ error: "Claim not found" });
-    res.json(onChain);
+    return res.status(404).json({ error: "Claim not found" });
   } catch (err) { next(err); }
 });
 
@@ -137,6 +171,12 @@ router.get("/:claimId", async (req, res, next) => {
 router.get("/:claimId/status", async (req, res, next) => {
   try {
     const { claimId } = req.params;
+    const liveClaim = await getLiveClaim(claimId);
+    if (liveClaim) {
+      persistLiveClaim(liveClaim);
+      return res.json(liveClaim);
+    }
+
     const dbRes = await query(
       `SELECT c.*, ce.url, ce.source_type, ce.points_awarded
        FROM claims c
@@ -149,9 +189,7 @@ router.get("/:claimId/status", async (req, res, next) => {
       const [claim] = groupClaimRows(dbRes.rows);
       return res.json(claim);
     }
-    const onChain = await gl.getClaim(claimId);
-    if (!onChain) return res.status(404).json({ error: "Claim not found" });
-    res.json(onChain);
+    return res.status(404).json({ error: "Claim not found" });
   } catch (err) { next(err); }
 });
 

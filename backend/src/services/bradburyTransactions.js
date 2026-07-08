@@ -58,6 +58,11 @@ async function waitAccepted(hash, label, retries = 90) {
   return receipt;
 }
 
+async function waitAcceptedIfRequested(hash, label, shouldWait) {
+  if (!shouldWait) return null;
+  return waitAccepted(hash, label);
+}
+
 async function waitEvmReceipt(hash, retries = 120) {
   const { client } = getBradburyContext();
   for (let attempt = 0; attempt < retries; attempt += 1) {
@@ -123,7 +128,7 @@ function extractTxIdFromLogs(logs) {
   return txLog?.topics?.[1];
 }
 
-async function sendSignedWrite(functionName, args = [], value = 0n) {
+async function sendSignedWrite(functionName, args = [], value = 0n, options = {}) {
   const {
     abi,
     account,
@@ -197,8 +202,10 @@ async function sendSignedWrite(functionName, args = [], value = 0n) {
     throw new Error(`EVM transaction succeeded but no GenLayer tx id was emitted: ${evmHash}${receiptTopics ? `; receipt topics: ${receiptTopics}` : ""}`);
   }
 
-  const receipt = await waitAccepted(txHash, functionName);
+  const waitForAcceptance = options.waitForAcceptance === true;
+  const receipt = await waitAcceptedIfRequested(txHash, functionName, waitForAcceptance);
   return {
+    confirmation_status: receipt ? "accepted" : "submitted",
     evm_tx_hash: evmHash,
     receipt,
     tx_hash: txHash,

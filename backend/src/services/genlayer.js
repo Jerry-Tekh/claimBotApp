@@ -388,7 +388,7 @@ async function purchasePolicy({ wallet, templateId, coverageArea, coverageAmount
     expiryBlock ?? defaultExpiryTimestamp(),
     triggerOverride,
   ], { value: premium });
-  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, policy_id: policyId };
+  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, policy_id: policyId, confirmation_status: tx.confirmation_status };
 }
 
 async function cancelPolicy({ wallet, policyId }) {
@@ -396,7 +396,7 @@ async function cancelPolicy({ wallet, policyId }) {
     return { tx_hash: "0x" + crypto.randomBytes(32).toString("hex") };
   }
   const tx = await writeContract("cancel_policy", [policyId]);
-  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash };
+  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, confirmation_status: tx.confirmation_status };
 }
 
 async function submitClaim({ wallet, policyId, eventDescription, sourceUrls, sourceTypeHints }) {
@@ -412,7 +412,7 @@ async function submitClaim({ wallet, policyId, eventDescription, sourceUrls, sou
     eventDescription,
     JSON.stringify(sourceUrls),
   ]);
-  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, claim_id: claimId, status: "pending" };
+  return { tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, claim_id: claimId, status: "pending", confirmation_status: tx.confirmation_status };
 }
 
 async function submitAppeal({ wallet, claimId, additionalSources, appealStatement }) {
@@ -420,7 +420,7 @@ async function submitAppeal({ wallet, claimId, additionalSources, appealStatemen
     return { claim_id: claimId, appeal_round: 1, approved: false, score: 0, reasoning: "Appeal submitted to validators" };
   }
   const tx = await writeContract("appeal_claim", [claimId, JSON.stringify(additionalSources), appealStatement]);
-  return { claim_id: claimId, tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, appeal_round: 1, approved: false, score: 0, reasoning: "Processing" };
+  return { claim_id: claimId, tx_hash: tx.tx_hash, evm_tx_hash: tx.evm_tx_hash, confirmation_status: tx.confirmation_status, appeal_round: 1, approved: false, score: 0, reasoning: "Processing" };
 }
 
 module.exports = {

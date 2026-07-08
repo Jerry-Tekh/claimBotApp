@@ -9,13 +9,15 @@ import type {
   TreasuryState, GlobalStats, AppealResult,
 } from "@/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 const api = axios.create({
   baseURL: BASE_URL,
   timeout: 45_000,
   headers: { "Content-Type": "application/json" },
 });
+
+const WRITE_TIMEOUT_MS = 180_000;
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -71,16 +73,16 @@ export async function purchasePolicy(params: {
   coverageAmount:   number;
   expiryBlock?:     number;
   triggerOverrides?: Record<string, string>;
-}): Promise<{ policy_id: string; tx_hash: string }> {
-  const { data } = await api.post("/api/policies/purchase", params);
+}): Promise<{ policy_id: string; tx_hash: string; evm_tx_hash?: string; confirmation_status?: string }> {
+  const { data } = await api.post("/api/policies/purchase", params, { timeout: WRITE_TIMEOUT_MS });
   return data;
 }
 
 export async function cancelPolicyApi(params: {
   wallet:   string;
   policyId: string;
-}): Promise<{ tx_hash: string }> {
-  const { data } = await api.post("/api/policies/cancel", params);
+}): Promise<{ tx_hash: string; evm_tx_hash?: string; confirmation_status?: string }> {
+  const { data } = await api.post("/api/policies/cancel", params, { timeout: WRITE_TIMEOUT_MS });
   return data;
 }
 
@@ -111,9 +113,11 @@ export async function submitClaim(params: {
   claim_id: string;
   tx_hash: string;
   status: string;
+  evm_tx_hash?: string;
+  confirmation_status?: string;
   evidence_score?: number;
 }> {
-  const { data } = await api.post("/api/claims/submit", params);
+  const { data } = await api.post("/api/claims/submit", params, { timeout: WRITE_TIMEOUT_MS });
   return data;
 }
 
@@ -123,7 +127,7 @@ export async function submitAppeal(params: {
   additionalSources: string[];
   appealStatement:   string;
 }): Promise<AppealResult> {
-  const { data } = await api.post("/api/claims/appeal", params);
+  const { data } = await api.post("/api/claims/appeal", params, { timeout: WRITE_TIMEOUT_MS });
   return data;
 }
 
