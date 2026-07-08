@@ -86,6 +86,30 @@ export async function cancelPolicyApi(params: {
   return data;
 }
 
+export async function recordPolicyPurchase(params: {
+  wallet:           string;
+  policyId:         string;
+  templateId:       string;
+  coverageArea:     string;
+  coverageAmount:   number;
+  expiryBlock:      number;
+  triggerCondition: string;
+  premiumPaid:      number;
+  txHash:           string;
+}): Promise<{ policy_id: string; tx_hash: string; confirmation_status?: string; policy?: Policy }> {
+  const { data } = await api.post("/api/policies/record-purchase", params);
+  return data;
+}
+
+export async function recordPolicyCancel(params: {
+  wallet:   string;
+  policyId: string;
+  txHash:   string;
+}): Promise<{ policy_id: string; tx_hash: string; confirmation_status?: string; policy?: Policy | null }> {
+  const { data } = await api.post("/api/policies/record-cancel", params);
+  return data;
+}
+
 // ── Claim APIs ────────────────────────────────────────────
 
 export async function fetchWalletClaims(wallet: string): Promise<Claim[]> {
@@ -128,6 +152,37 @@ export async function submitAppeal(params: {
   appealStatement:   string;
 }): Promise<AppealResult> {
   const { data } = await api.post("/api/claims/appeal", params, { timeout: WRITE_TIMEOUT_MS });
+  return data;
+}
+
+export async function recordClaimSubmission(params: {
+  wallet:           string;
+  claimId:          string;
+  policyId:         string;
+  eventDescription: string;
+  sourceUrls:       string[];
+  sourceTypeHints:  Record<string, string>;
+  evidenceScore:    number;
+  txHash:           string;
+}): Promise<{
+  claim_id: string;
+  tx_hash: string;
+  status: string;
+  confirmation_status?: string;
+  evidence_score?: number;
+}> {
+  const { data } = await api.post("/api/claims/record-submit", params);
+  return data;
+}
+
+export async function recordClaimAppeal(params: {
+  wallet:            string;
+  claimId:           string;
+  additionalSources: string[];
+  appealStatement:   string;
+  txHash:            string;
+}): Promise<AppealResult & { tx_hash?: string; confirmation_status?: string }> {
+  const { data } = await api.post("/api/claims/record-appeal", params);
   return data;
 }
 
