@@ -217,6 +217,16 @@ NEXT_PUBLIC_CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
 NEXT_PUBLIC_GENLAYER_RPC=https://rpc-bradbury.genlayer.com
 ```
 
+Before deploying backend changes, run:
+
+```bash
+cd backend
+npm run check:bradbury
+```
+
+After Render deploys with `DEMO_MODE=false`, `/health` should return
+`mode: "live"` and `genlayer.signerConfigured: true`.
+
 ---
 
 ## Run Contract Tests
