@@ -7,8 +7,8 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL:              process.env.NEXT_PUBLIC_API_URL              || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000",
     NEXT_PUBLIC_API_BASE_URL:         process.env.NEXT_PUBLIC_API_BASE_URL         || process.env.NEXT_PUBLIC_API_URL      || "http://localhost:4000",
-    NEXT_PUBLIC_GENLAYER_ENDPOINT:    process.env.NEXT_PUBLIC_GENLAYER_ENDPOINT    || "https://testnet.genlayer.com",
-    NEXT_PUBLIC_CONTRACT_ADDRESS:     process.env.NEXT_PUBLIC_CONTRACT_ADDRESS     || "0x0000000000000000000000000000000000000000",
+    NEXT_PUBLIC_GENLAYER_ENDPOINT:    process.env.NEXT_PUBLIC_GENLAYER_ENDPOINT    || "https://rpc-bradbury.genlayer.com",
+    NEXT_PUBLIC_CONTRACT_ADDRESS:     process.env.NEXT_PUBLIC_CONTRACT_ADDRESS     || "0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1",
   },
 
   // Next.js 15: turbopack is stable, opt-in

@@ -190,11 +190,11 @@ CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
 GENLAYER_ENDPOINT=https://rpc-bradbury.genlayer.com
 ```
 
-When `DEMO_MODE=false`, backend writes are signed by `GENLAYER_PRIVATE_KEY`
-using the GenLayer JavaScript SDK. Because the contract reads
-`gl.message.sender_address`, the backend signer becomes the on-chain policy
-holder and claimant for purchases, claims, cancellations, and appeals. Treat
-this as a server-signed/custodial flow until browser wallet signing is added.
+When `DEMO_MODE=false`, user actions are signed in the browser wallet through
+`genlayer-js`. The backend reads Bradbury contract state, stores the
+client-signed transaction metadata for dashboard queries, and rejects legacy
+live write endpoints with a `409` response. This keeps policy purchases, claim
+submissions, cancellations, and appeals tied to the user's wallet address.
 
 Render backend environment:
 
@@ -205,16 +205,19 @@ RUN_MIGRATIONS=false
 DATABASE_URL=postgresql://USER:PASSWORD@HOST/DB?sslmode=verify-full
 GENLAYER_ENDPOINT=https://rpc-bradbury.genlayer.com
 CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
-GENLAYER_PRIVATE_KEY=0x...
 FRONTEND_URL=https://YOUR-VERCEL-APP.vercel.app
 ```
+
+`GENLAYER_PRIVATE_KEY` is not required for normal production user actions. Only
+set it for backend maintenance scripts that intentionally submit backend-signed
+Bradbury maintenance transactions.
 
 Vercel frontend environment:
 
 ```bash
 NEXT_PUBLIC_API_BASE_URL=https://claimbotapp.onrender.com
 NEXT_PUBLIC_CONTRACT_ADDRESS=0x5c5C18e0B7bD4EfF63C89C7077DAA64f2F4356d1
-NEXT_PUBLIC_GENLAYER_RPC=https://rpc-bradbury.genlayer.com
+NEXT_PUBLIC_GENLAYER_ENDPOINT=https://rpc-bradbury.genlayer.com
 ```
 
 Before deploying backend changes, run:
@@ -225,7 +228,9 @@ npm run check:bradbury
 ```
 
 After Render deploys with `DEMO_MODE=false`, `/health` should return
-`mode: "live"` and `genlayer.signerConfigured: true`.
+`mode: "live"` and `genlayer.contractConfigured: true`. It is fine for
+`genlayer.signerConfigured` to be `false` unless you configured a maintenance
+private key.
 
 ---
 
