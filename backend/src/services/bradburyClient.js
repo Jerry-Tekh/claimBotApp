@@ -20,6 +20,15 @@ function getPrivateKey() {
   return privateKey;
 }
 
+function getOptionalPrivateKey() {
+  const privateKey = process.env.GENLAYER_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  if (!privateKey) return null;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+    throw new Error("PRIVATE_KEY must be a 0x-prefixed 32-byte hex private key");
+  }
+  return privateKey;
+}
+
 function isValidPrivateKey(privateKey) {
   return /^0x[0-9a-fA-F]{64}$/.test(privateKey || "");
 }
@@ -53,12 +62,13 @@ function getBradburyConfigStatus() {
 function getBradburyContext() {
   if (cached) return cached;
 
-  const account = createAccount(getPrivateKey());
+  const privateKey = getOptionalPrivateKey();
+  const account = privateKey ? createAccount(privateKey) : null;
   const endpoint = process.env.GENLAYER_ENDPOINT || DEFAULT_ENDPOINT;
   const client = createClient({
     chain: testnetBradbury,
     endpoint,
-    account,
+    ...(account && { account }),
   });
 
   cached = {
@@ -78,7 +88,9 @@ function getBradburyContext() {
 }
 
 function getSignerAddress() {
-  return getBradburyContext().account.address;
+  const { account } = getBradburyContext();
+  if (!account) throw new Error("Missing PRIVATE_KEY or GENLAYER_PRIVATE_KEY for live Bradbury transactions");
+  return account.address;
 }
 
 module.exports = {

@@ -137,6 +137,9 @@ async function sendSignedWrite(functionName, args = [], value = 0n, options = {}
     encodeFunctionData,
     testnetBradbury,
   } = getBradburyContext();
+  if (!account) {
+    throw new Error("Missing PRIVATE_KEY or GENLAYER_PRIVATE_KEY for backend-signed Bradbury transaction");
+  }
 
   const valueBigInt = toBigInt(value);
   const callData = abi.calldata.encode(
