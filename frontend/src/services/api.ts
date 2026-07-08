@@ -13,13 +13,35 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 30_000,
+  timeout: 45_000,
   headers: { "Content-Type": "application/json" },
 });
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function canRetryRequest(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  const method = err.config?.method?.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (!err.response) return true;
+  return [408, 425, 429, 500, 502, 503, 504].includes(err.response.status);
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
+    const config = axios.isAxiosError(err) ? err.config as (typeof err.config & { _retryCount?: number }) : undefined;
+    if (config && canRetryRequest(err)) {
+      config._retryCount = config._retryCount ?? 0;
+      if (config._retryCount < 2) {
+        config._retryCount += 1;
+        await sleep(800 * config._retryCount);
+        return api.request(config);
+      }
+    }
+
     const message = err.response?.data?.error || err.message || "Request failed";
     throw new Error(message);
   }

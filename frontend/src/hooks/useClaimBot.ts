@@ -109,6 +109,34 @@ export function useClaimBot(wallet: string) {
     refreshRef.current();
   }, []);
 
+  const checkClaimStatus = useCallback(async (claimId: string) => {
+    try {
+      const updated = await pollClaimStatus(claimId);
+      if (!mountedRef.current) return null;
+
+      setClaims(prev =>
+        prev.some(c => c.claim_id === claimId)
+          ? prev.map(c => c.claim_id === claimId ? updated : c)
+          : [...prev, updated]
+      );
+
+      if (updated.status === "approved") {
+        notify("success", `Claim approved. Score: ${updated.evidence_score}/100.`);
+      } else if (updated.status === "rejected") {
+        notify("warning", `Claim rejected. Score: ${updated.evidence_score}/100.`);
+      } else {
+        notify("info", `Claim status: ${updated.status}.`);
+      }
+
+      return updated;
+    } catch (e: unknown) {
+      if (mountedRef.current) {
+        notify("error", "Failed to get claim status: " + (e instanceof Error ? e.message : "unknown error"));
+      }
+      return null;
+    }
+  }, [notify]);
+
   const activePolicies   = policies.filter(p => p.active && !p.cancelled && !p.paid_out);
   const historicPolicies = policies.filter(p => !p.active || p.paid_out || p.cancelled);
 
@@ -185,6 +213,7 @@ export function useClaimBot(wallet: string) {
     dismissNotif,
     refresh: safeRefresh,
     watchClaim,
+    checkClaimStatus,
     claimsForPolicy,
   };
 }

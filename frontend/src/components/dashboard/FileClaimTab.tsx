@@ -29,13 +29,14 @@ interface SubmittedClaim {
 }
 
 export default function FileClaimTab({
-  activePolicies, wallet, notify, onRefresh, watchClaim,
+  activePolicies, wallet, notify, onRefresh, watchClaim, onCheckStatus,
 }: {
   activePolicies: Policy[];
   wallet:         string;
   notify:         (t: Notification["type"], m: string) => void;
   onRefresh:      () => void;
   watchClaim:     (id: string) => void;
+  onCheckStatus:  (claimId: string) => void;
 }) {
   const [policyId,    setPolicyId]    = useState("");
   const [description, setDescription] = useState("");
@@ -118,7 +119,7 @@ export default function FileClaimTab({
         notify("info", `Claim ${result.claim_id.slice(-6)} submitted. Validators reviewing (up to 5 min)...`);
         watchClaim(result.claim_id);
       }
-      onRefresh();
+      onCheckStatus(result.claim_id);
     } catch (e: unknown) {
       notify("error", "Submission failed: " + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -169,7 +170,7 @@ export default function FileClaimTab({
             <button onClick={resetForm} className="btn-secondary">
               File another claim
             </button>
-            <button onClick={onRefresh} className="btn-primary">
+            <button onClick={() => onCheckStatus(submitted.claim_id)} className="btn-primary">
               Check status
             </button>
           </div>

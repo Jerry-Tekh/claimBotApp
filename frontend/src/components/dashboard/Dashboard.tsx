@@ -54,7 +54,7 @@ export default function Dashboard() {
     policies, activePolicies, historicPolicies,
     claims, templates, treasury, stats,
     loading, notifs, notify, dismissNotif,
-    refresh, watchClaim, claimsForPolicy,
+    refresh, watchClaim, checkClaimStatus, claimsForPolicy,
   } = useClaimBot(wallet);
 
   const TABS: { id: Tab; label: string }[] = [
@@ -287,6 +287,7 @@ export default function Dashboard() {
                 notify={notify}
                 onRefresh={refresh}
                 watchClaim={watchClaim}
+                onCheckStatus={checkClaimStatus}
               />
             )}
             {tab === "treasury" && (
