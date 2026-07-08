@@ -16,9 +16,14 @@ const policyRoutes   = require("./routes/policies");
 const claimRoutes    = require("./routes/claims");
 const treasuryRoutes = require("./routes/treasury");
 const statsRoutes    = require("./routes/stats");
+const { getBradburyConfigStatus } = require("./services/bradburyClient");
 
 const app  = express();
 const PORT = process.env.PORT || 4000;
+
+function isLiveMode() {
+  return process.env.DEMO_MODE === "false";
+}
 
 // ── Middleware ────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
@@ -43,9 +48,11 @@ app.use("/api", rateLimit({
 
 // ── Health ────────────────────────────────────────────────
 app.get("/health", (req, res) => {
+  const liveMode = isLiveMode();
   res.json({
     status: "ok",
-    mode:   process.env.DEMO_MODE === "true" ? "demo" : "live",
+    mode: liveMode ? "live" : "demo",
+    ...(liveMode && { genlayer: getBradburyConfigStatus() }),
     timestamp: new Date().toISOString(),
   });
 });
@@ -98,7 +105,7 @@ app.use((err, req, res, next) => {
 // ── Start ─────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🛡  ClaimBot API  →  http://localhost:${PORT}`);
-  console.log(`   Mode: ${process.env.DEMO_MODE === "true" ? "DEMO (mock data)" : "LIVE (GenLayer)"}`);
+  console.log(`   Mode: ${isLiveMode() ? "LIVE (GenLayer)" : "DEMO (mock data)"}`);
   console.log(`   Health: http://localhost:${PORT}/health\n`);
 });
 

@@ -20,12 +20,34 @@ function getPrivateKey() {
   return privateKey;
 }
 
+function isValidPrivateKey(privateKey) {
+  return /^0x[0-9a-fA-F]{64}$/.test(privateKey || "");
+}
+
+function isValidAddress(address) {
+  return /^0x[0-9a-fA-F]{40}$/.test(address || "");
+}
+
 function getContractAddress() {
   const address = process.env.CONTRACT_ADDRESS || process.env.CLAIMBOT_CONTRACT_ADDRESS;
-  if (!/^0x[0-9a-fA-F]{40}$/.test(address || "")) {
+  if (!isValidAddress(address)) {
     throw new Error("CONTRACT_ADDRESS must be a 0x-prefixed contract address");
   }
   return address;
+}
+
+function getBradburyConfigStatus() {
+  const privateKey = process.env.GENLAYER_PRIVATE_KEY || process.env.PRIVATE_KEY;
+  const contractAddress = process.env.CONTRACT_ADDRESS || process.env.CLAIMBOT_CONTRACT_ADDRESS;
+  const signerConfigured = isValidPrivateKey(privateKey);
+
+  return {
+    endpoint: process.env.GENLAYER_ENDPOINT || DEFAULT_ENDPOINT,
+    contractAddress: isValidAddress(contractAddress) ? contractAddress : null,
+    contractConfigured: isValidAddress(contractAddress),
+    signerConfigured,
+    signerAddress: signerConfigured ? createAccount(privateKey).address : null,
+  };
 }
 
 function getBradburyContext() {
@@ -61,5 +83,6 @@ function getSignerAddress() {
 module.exports = {
   DEFAULT_ENDPOINT,
   getBradburyContext,
+  getBradburyConfigStatus,
   getSignerAddress,
 };
