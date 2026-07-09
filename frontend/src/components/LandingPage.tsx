@@ -115,13 +115,18 @@ export default function LandingPage() {
         </div>
       </motion.nav>
 
-      <section className="relative pt-28 sm:pt-36 md:pt-40 pb-16 sm:pb-20 md:pb-24 px-4 sm:px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,black,transparent)]" />
-        <motion.div
-          className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-gradient-to-br from-brand-200/40 via-violet-200/30 to-accent-200/30 rounded-full blur-3xl"
-          animate={{ scale: [1, 1.1, 1], opacity: [0.5, 0.7, 0.5] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        />
+      <section
+        className="relative pt-28 sm:pt-36 md:pt-40 pb-16 sm:pb-20 md:pb-24 px-4 sm:px-6 text-center overflow-hidden bg-[#f3ece7]"
+        style={{
+          backgroundImage: "url('/claimbot.webp')",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
+          backgroundSize: "min(1040px, 115vw) auto",
+        }}
+      >
+        <div className="absolute inset-0 bg-white/70" />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/60 via-white/70 to-white" />
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-white to-transparent" />
         <motion.div style={{ opacity: heroOpacity, y: heroY }} className="relative max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
